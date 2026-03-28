@@ -11,7 +11,9 @@ const io = socketIo(server);
 app.use(express.static('public'));
 
 app.get('/', (req, res) => {
-    res.status(200).send('public/index.html');
+    res.send(`
+    <h1>Hello from Express</h1>
+  `);
 });
 
 const rooms = {};
