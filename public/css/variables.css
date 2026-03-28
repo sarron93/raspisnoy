@@ -1,0 +1,53 @@
+:root {
+    /* 🎨 COLORS */
+    --primary: #e94560;
+    --primary-dark: #c73e54;
+    --primary-light: #ff6b6b;
+    --secondary: #4ecca3;
+    --secondary-dark: #3db892;
+    --secondary-light: #7ee8c7;
+    --accent: #ffd700;
+    --accent-light: #ffe135;
+    --dark: #0a0a1a;
+    --darker: #050510;
+    --table-green: #1a473a;
+    --table-dark: #0d2a1f;
+    --text: #ffffff;
+    --text-muted: #8a8ab0;
+    --text-dark: #1a1a3e;
+    --success: #4ecca3;
+    --warning: #ffc107;
+    --error: #ff6b6b;
+
+    /* 📐 SIZING */
+    --header-height: auto;
+    --control-min-height: 140px;
+    --table-min-height: 400px;
+    --border-radius-sm: 8px;
+    --border-radius: 12px;
+    --border-radius-lg: 16px;
+    --border-radius-xl: 20px;
+    --container-max: 1400px;
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 12px;
+    --spacing-lg: 16px;
+    --spacing-xl: 20px;
+    --spacing-2xl: 32px;
+
+    /* 🎬 EFFECTS */
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+    --shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.5);
+    --shadow-glow: 0 0 30px rgba(78, 204, 163, 0.4);
+    --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* 🎲 ANIMATIONS */
+    --anim-bounce: bounce 2s infinite;
+    --anim-pulse: pulse 2s infinite;
+    --anim-float: float 3s ease-in-out infinite;
+    --anim-glow: glow 3s ease-in-out infinite alternate;
+}
+

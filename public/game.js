@@ -87,7 +87,10 @@ class OnlinePokerGame {
         this.socket.on('error', (error) => {
             console.error('⚠️ Ошибка:', error);
             if (error.includes('Недопустимый ход')) {
-                alert('⚠️ ' + error + '\n\n📜 ПРАВИЛА:\n1️⃣ Есть масть хода — ходи ею\n2️⃣ Нет масти — бей козырем\n3️⃣ Нет ничего — сбрасывай любую');
+                alert('⚠️ ' + error + '\n\n📜 ПРАВИЛА РАСПИСНОГО ПОКЕРА:\n' +
+                    '1️⃣ Есть масть хода — ходи ею\n' +
+                    '2️⃣ Нет масти — бей козырем\n' +
+                    '3️⃣ Нет ничего — сбрасывай любую');
             } else {
                 alert('⚠️ ' + error);
             }
@@ -136,8 +139,8 @@ class OnlinePokerGame {
     }
 
     showScreen(screenId) {
-        document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
-        document.getElementById(screenId).classList.remove('hidden');
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(screenId).classList.add('active');
     }
 
     updateStatus(message, type) {
@@ -177,26 +180,33 @@ class OnlinePokerGame {
     }
 
     updateHeaders() {
-        document.getElementById('modeBar').textContent = `🎮 ${this.gameState.mode}`;
-        let infoText = `🎲 Раунд ${this.gameState.roundNumber}/11 | Карт: ${this.gameState.cardsPerRound} | `;
-        infoText += this.gameState.trumpSuit ? `Козырь: ${this.gameState.trumpSuit}` : '🚫 Без козырей';
-        infoText += ` | Взятка: ${(this.gameState.currentTrick || 0) + 1}/${this.gameState.cardsPerRound}`;
-        document.getElementById('infoBar').textContent = infoText;
-        document.getElementById('progressBar').textContent = `Режим ${this.gameState.modeIdx}/${this.gameState.totalModes} | Колода: 36 карт`;
+        document.getElementById('modeBar').textContent = `${this.gameState.mode}`;
+
+        const infoBar = document.getElementById('infoBar');
+        infoBar.innerHTML = `
+            <span>🎲 ${this.gameState.roundNumber}/11</span>
+            <span>|</span>
+            <span>🃏 ${this.gameState.cardsPerRound}</span>
+            <span>|</span>
+            <span>${this.gameState.trumpSuit ? `🂡 ${this.gameState.trumpSuit}` : '🚫'}</span>
+        `;
+
+        document.getElementById('progressBar').textContent =
+            `Режим ${this.gameState.modeIdx}/${this.gameState.totalModes}`;
 
         if (this.gameState.gameState === 'bidding') {
             const currentPlayer = this.gameState.players[this.gameState.currentPlayer];
-            document.getElementById('turnBar').textContent = `📢 Ход: ${currentPlayer.name} (заявка)`;
+            document.getElementById('turnBar').textContent = `📢 ${currentPlayer.name} (заявка)`;
         } else if (this.gameState.gameState === 'playing') {
             const currentPlayerIdx = this.getCurrentPlayerIdx();
             const currentPlayer = this.gameState.players[currentPlayerIdx];
-            document.getElementById('turnBar').textContent = currentPlayer ? `🎴 Ход: ${currentPlayer.name}` : '🎴 Ход: ...';
+            document.getElementById('turnBar').textContent = currentPlayer ? `🎴 ${currentPlayer.name}` : '🎴 ...';
         } else {
             document.getElementById('turnBar').textContent = '';
         }
 
         const dealer = this.gameState.players.find(p => p.isDealer);
-        document.getElementById('dealerMarker').textContent = `🎴 ДИЛЕР: ${dealer ? dealer.name : ''}`;
+        document.getElementById('dealerMarker').textContent = `🎴 ${dealer ? dealer.name : ''}`;
     }
 
     updatePlayersArea() {
@@ -204,16 +214,61 @@ class OnlinePokerGame {
         area.innerHTML = '';
 
         this.gameState.players.forEach((player, idx) => {
-            const div = document.createElement('div');
-            div.className = `player-card player-position-${idx}`;
+            const wrapper = document.createElement('div');
+            wrapper.className = `player-wrapper player-position-${idx}`;
 
-            if (idx === this.playerIdx) div.classList.add('active');
-            if (player.isDealer) div.classList.add('dealer');
+            if (idx === this.playerIdx) wrapper.classList.add('active');
+            if (player.isDealer) wrapper.classList.add('dealer');
+
+            const fullHand = document.createElement('div');
+            fullHand.className = 'player-full-hand';
+
+            if (idx === this.playerIdx && this.myHand && this.myHand.length > 0) {
+                const isBidding = this.gameState.gameState === 'bidding';
+                const currentPlayerIdx = this.getCurrentPlayerIdx();
+                const isMyTurn = this.gameState.gameState === 'playing' && currentPlayerIdx === this.playerIdx;
+                const cardsClickable = !isBidding && isMyTurn;
+
+                const validIndices = cardsClickable ? this.getValidClientIndices() : [];
+
+                this.myHand.forEach((card, cardIdx) => {
+                    const miniCard = this.createPlayerCardMini(
+                        card,
+                        cardIdx,
+                        cardsClickable,
+                        validIndices.includes(cardIdx)
+                    );
+                    fullHand.appendChild(miniCard);
+                });
+            } else {
+                if (player.handLength > 0 && player.handLength <= 6) {
+                    for (let i = 0; i < player.handLength; i++) {
+                        const miniCard = document.createElement('div');
+                        miniCard.className = 'player-card-mini disabled';
+                        miniCard.innerHTML = `
+                            <span class="player-card-mini-rank">?</span>
+                            <span class="player-card-mini-suit">🂠</span>
+                        `;
+                        miniCard.style.cursor = 'not-allowed';
+                        fullHand.appendChild(miniCard);
+                    }
+                } else if (player.handLength > 6) {
+                    const cardCount = document.createElement('div');
+                    cardCount.className = 'player-card-count';
+                    cardCount.textContent = `🃏${player.handLength}`;
+                    fullHand.appendChild(cardCount);
+                }
+            }
+
+            wrapper.appendChild(fullHand);
+
+            const playerCard = document.createElement('div');
+            playerCard.className = 'player-card';
 
             const avatarLetter = player.name.charAt(0).toUpperCase();
             const bidText = player.bid !== null ? player.bid : '-';
 
-            div.innerHTML = `
+            playerCard.innerHTML = `
                 <div class="player-avatar">${avatarLetter}</div>
                 <div class="player-name" title="${player.name}">${player.name}</div>
                 <div class="player-stats">
@@ -223,24 +278,125 @@ class OnlinePokerGame {
                     <span>🃏${player.handLength}</span>
                 </div>
             `;
-            area.appendChild(div);
+
+            wrapper.appendChild(playerCard);
+            area.appendChild(wrapper);
         });
+    }
+
+    createPlayerCardMini(card, idx, isClickable = false, isValid = false) {
+        const cardDiv = document.createElement('div');
+        const cardClass = card.isSixSpades ? 'joker' :
+            card.suit === '♥' || card.suit === '♦' ? 'hearts' : 'spades';
+
+        cardDiv.className = `player-card-mini ${cardClass}`;
+
+        const rank = card.isSixSpades ? '🃏' : card.rank;
+        const suit = card.isSixSpades ? '🃏' : card.suit;
+
+        cardDiv.innerHTML = `
+            <span class="player-card-mini-rank">${rank}</span>
+            <span class="player-card-mini-suit">${suit}</span>
+        `;
+
+        if (!isClickable || !isValid) {
+            cardDiv.classList.add('disabled');
+            cardDiv.title = isClickable ? 'Нельзя ходить этой картой' : 'Ждите своего хода';
+            cardDiv.style.cursor = 'not-allowed';
+        } else {
+            cardDiv.onclick = () => this.playCard(idx);
+            cardDiv.style.cursor = 'pointer';
+            cardDiv.title = 'Нажмите чтобы походить';
+        }
+
+        return cardDiv;
     }
 
     updateCardsOnTable() {
         const area = document.getElementById('cardsOnTable');
         area.innerHTML = '';
-        if (!this.gameState.cardsOnTable) return;
 
-        this.gameState.cardsOnTable.forEach(({ playerIdx, card }) => {
-            const div = document.createElement('div');
-            div.className = 'card-on-table';
-            const cardClass = card.isSixSpades ? 'joker' : card.suit === '♥' || card.suit === '♦' ? 'hearts' : 'spades';
-            const cardText = card.isSixSpades ? '6♠🃏' : `${card.rank}${card.suit}`;
-            div.innerHTML = `<div class="card-value ${cardClass}">${cardText}</div>
-                <div class="player-name">${this.gameState.players[playerIdx].name}</div>`;
+        if (!this.gameState.cardsOnTable || this.gameState.cardsOnTable.length === 0) {
+            const emptyMsg = document.createElement('div');
+            emptyMsg.style.gridColumn = '1 / -1';
+            emptyMsg.style.textAlign = 'center';
+            emptyMsg.style.color = 'rgba(255, 215, 0, 0.5)';
+            emptyMsg.style.fontSize = '0.9em';
+            emptyMsg.style.padding = '20px';
+            emptyMsg.textContent = '🃏 Карты будут здесь...';
+            area.appendChild(emptyMsg);
+            return;
+        }
+
+        this.gameState.cardsOnTable.forEach(({ playerIdx, card }, index) => {
+            const div = this.createCardElement(card, false, true);
+
+            const player = this.gameState.players[playerIdx];
+            const isDealer = player.isDealer;
+            const isLastCard = index === this.gameState.cardsOnTable.length - 1;
+            const playerName = player.name.length > 10 ? player.name.substring(0, 10) + '...' : player.name;
+
+            const badge = document.createElement('div');
+            badge.className = `player-badge ${isDealer ? 'dealer' : ''} ${isLastCard ? 'active' : ''}`;
+            badge.innerHTML = `${isDealer ? '👑 ' : ''}${playerName}`;
+            div.appendChild(badge);
+
+            const order = document.createElement('div');
+            order.className = 'play-order';
+            order.textContent = index + 1;
+            div.appendChild(order);
+
+            div.title = `${player.name} походил ${card.isSixSpades ? '6♠🃏' : `${card.rank}${card.suit}`}\nПорядок: ${index + 1}\n${isDealer ? '👑 Дилер' : ''}`;
+
             area.appendChild(div);
         });
+    }
+
+    createCardElement(card, isMini = false, isOnTable = false) {
+        const cardDiv = document.createElement('div');
+        const cardClass = card.isSixSpades ? 'joker' :
+            card.suit === '♥' || card.suit === '♦' ? 'hearts' : 'spades';
+
+        if (isMini) {
+            cardDiv.className = `mini-card ${cardClass}`;
+            cardDiv.textContent = card.isSixSpades ? '🃏' : card.suit;
+        } else if (isOnTable) {
+            cardDiv.className = `card-on-table ${cardClass}`;
+
+            const rank = card.isSixSpades ? '🃏' : card.rank;
+            const suit = card.isSixSpades ? '🃏' : card.suit;
+
+            cardDiv.innerHTML = `
+                <div class="card-corner card-corner-top">
+                    <span class="card-rank">${rank}</span>
+                    <span class="card-suit-small">${suit}</span>
+                </div>
+                <div class="card-center">${suit}</div>
+                <div class="card-corner card-corner-bottom">
+                    <span class="card-rank">${rank}</span>
+                    <span class="card-suit-small">${suit}</span>
+                </div>
+            `;
+        } else {
+            cardDiv.className = `card ${cardClass}`;
+
+            const rank = card.isSixSpades ? '🃏' : card.rank;
+            const suit = card.isSixSpades ? '🃏' : card.suit;
+
+            cardDiv.innerHTML = `
+                <div class="card-corner card-corner-top">
+                    <span class="card-rank">${rank}</span>
+                    <span class="card-suit-small">${suit}</span>
+                </div>
+                <div class="card-center">${suit}</div>
+                <div class="card-corner card-corner-bottom">
+                    <span class="card-rank">${rank}</span>
+                    <span class="card-suit-small">${suit}</span>
+                </div>
+            `;
+        }
+
+        return cardDiv;
     }
 
     getCurrentPlayerIdx() {
@@ -295,60 +451,6 @@ class OnlinePokerGame {
         return this.myHand.map((_, i) => i);
     }
 
-    renderHandCards(area) {
-        if (!this.myHand || this.myHand.length === 0) return;
-
-        const handLabel = document.createElement('div');
-        handLabel.className = 'your-hand-label';
-        handLabel.textContent = '🃏 Ваши карты:';
-        area.appendChild(handLabel);
-
-        const handDiv = document.createElement('div');
-        handDiv.className = 'hand-cards';
-
-        const isBlind = this.gameState.mode.includes('Слепая');
-        const isBidding = this.gameState.gameState === 'bidding';
-        const currentPlayerIdx = this.getCurrentPlayerIdx();
-        const isMyTurn = this.gameState.gameState === 'playing' && currentPlayerIdx === this.playerIdx;
-
-        const cardsClickable = !isBlind && !isBidding && isMyTurn;
-
-        this.myHand.forEach((card, idx) => {
-            const cardDiv = document.createElement('div');
-            const cardClass = card.isSixSpades ? 'joker' :
-                card.suit === '♥' || card.suit === '♦' ? 'hearts' : 'spades';
-
-            cardDiv.className = `card ${cardClass}`;
-            cardDiv.textContent = card.isSixSpades ? '6♠🃏' : `${card.rank}${card.suit}`;
-
-            if (!cardsClickable) {
-                cardDiv.classList.add('disabled');
-                if (isBlind) {
-                    cardDiv.title = 'Карты скрыты в режиме Слепая';
-                } else if (isBidding) {
-                    cardDiv.title = 'Сначала сделайте заявку';
-                } else if (!isMyTurn) {
-                    cardDiv.title = 'Ждите своего хода';
-                } else {
-                    cardDiv.title = 'Нельзя ходить этой картой';
-                }
-                cardDiv.style.cursor = 'not-allowed';
-            } else {
-                const validIndices = this.getValidClientIndices();
-                if (!validIndices.includes(idx)) {
-                    cardDiv.classList.add('disabled');
-                    cardDiv.title = 'Нельзя ходить этой картой по правилам';
-                } else {
-                    cardDiv.onclick = () => this.playCard(idx);
-                    cardDiv.style.cursor = 'pointer';
-                }
-            }
-
-            handDiv.appendChild(cardDiv);
-        });
-        area.appendChild(handDiv);
-    }
-
     updateControlArea() {
         const area = document.getElementById('controlArea');
         area.innerHTML = '';
@@ -359,12 +461,11 @@ class OnlinePokerGame {
         }
 
         const isBlind = this.gameState.mode.includes('Слепая');
-        if (!isBlind && this.myHand && this.myHand.length > 0) {
-            this.renderHandCards(area);
-        } else if (isBlind) {
+
+        if (isBlind && this.myHand && this.myHand.length > 0) {
             const msgDiv = document.createElement('div');
             msgDiv.className = 'message warning';
-            msgDiv.innerHTML = `👁️ СЛЕПАЯ — карты скрыты!<br>У вас карт: ${this.myHand?.length || 0}`;
+            msgDiv.innerHTML = `👁️ СЛЕПАЯ — карты скрыты!<br>У вас карт: ${this.myHand.length}`;
             area.appendChild(msgDiv);
         }
 
@@ -374,41 +475,53 @@ class OnlinePokerGame {
             const currentPlayerIdx = this.getCurrentPlayerIdx();
             if (currentPlayerIdx === this.playerIdx) {
                 this.showPlayHints(area);
-            }
-        } else {
-            const msg = document.createElement('div');
-            msg.className = 'message';
-            if (this.gameState.gameState === 'bidding') {
-                const currentPlayer = this.gameState.players[this.gameState.currentPlayer];
-                msg.textContent = `⏳ ${currentPlayer?.name || '...'} делает заявку...`;
-            } else if (this.gameState.gameState === 'playing') {
-                const currentPlayerIdx = this.getCurrentPlayerIdx();
+            } else {
+                const msg = document.createElement('div');
+                msg.className = 'message';
                 const currentPlayer = this.gameState.players[currentPlayerIdx];
                 msg.textContent = `⏳ ${currentPlayer?.name || '...'} ходит...`;
-            } else {
-                msg.textContent = '⏳ Ожидание...';
+                area.appendChild(msg);
             }
+        } else if (this.gameState.gameState === 'bidding') {
+            const msg = document.createElement('div');
+            msg.className = 'message';
+            const currentPlayer = this.gameState.players[this.gameState.currentPlayer];
+            msg.textContent = `⏳ ${currentPlayer?.name || '...'} делает заявку...`;
             area.appendChild(msg);
         }
     }
 
     showBiddingInterface(area) {
         const isDealer = this.gameState.players[this.playerIdx].isDealer;
+
+        const bidContainer = document.createElement('div');
+        bidContainer.className = 'bid-container';
+
+        const bidTitle = document.createElement('div');
+        bidTitle.className = 'bid-title';
+        bidTitle.textContent = '📢 Сделайте заявку на взятки:';
+        bidContainer.appendChild(bidTitle);
+
         if (isDealer) {
             const totalBid = this.gameState.players.filter(p => p.bid !== null).reduce((sum, p) => sum + p.bid, 0);
             const forbidden = this.gameState.cardsPerRound - totalBid;
             const warnDiv = document.createElement('div');
             warnDiv.className = 'message warning';
+            warnDiv.style.fontSize = '0.9rem';
+            warnDiv.style.padding = '8px 12px';
+            warnDiv.style.margin = '0 0 12px 0';
             warnDiv.textContent = `⚠️ Нельзя называть ${forbidden}`;
-            area.appendChild(warnDiv);
+            bidContainer.appendChild(warnDiv);
         }
 
         const bidDiv = document.createElement('div');
         bidDiv.className = 'bid-options';
+
         for (let i = 0; i <= this.gameState.cardsPerRound; i++) {
             const btn = document.createElement('div');
             btn.className = 'bid-option';
             btn.textContent = i;
+
             const isDealer = this.gameState.players[this.playerIdx].isDealer;
             if (isDealer) {
                 const totalBid = this.gameState.players.filter(p => p.bid !== null).reduce((sum, p) => sum + p.bid, 0);
@@ -420,9 +533,12 @@ class OnlinePokerGame {
             } else {
                 btn.onclick = () => this.makeBid(i);
             }
+
             bidDiv.appendChild(btn);
         }
-        area.appendChild(bidDiv);
+
+        bidContainer.appendChild(bidDiv);
+        area.appendChild(bidContainer);
     }
 
     showPlayHints(area) {

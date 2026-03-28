@@ -1,0 +1,80 @@
+/* 🎮 HEADER BLOCKS */
+.header-blocks {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.mode-bar, .info-bar, .turn-bar, .progress-bar {
+    padding: var(--spacing-sm) var(--spacing-lg);
+    text-align: center;
+    border-radius: var(--border-radius);
+    font-weight: 600;
+    font-size: 0.9rem;
+    backdrop-filter: blur(10px);
+    animation: slideDown 0.4s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.mode-bar {
+    background: linear-gradient(135deg, rgba(233, 69, 96, 0.95), rgba(255, 107, 107, 0.95));
+    color: white;
+    font-size: 1rem;
+    box-shadow: 0 3px 15px rgba(233, 69, 96, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.info-bar {
+    background: rgba(22, 33, 62, 0.9);
+    color: var(--secondary);
+    border: 1px solid rgba(78, 204, 163, 0.4);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.85rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
+}
+
+.info-bar span {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.turn-bar {
+    background: linear-gradient(135deg, rgba(78, 204, 163, 0.95), rgba(126, 232, 199, 0.95));
+    color: var(--dark);
+    font-size: 0.95rem;
+    box-shadow: 0 3px 15px rgba(78, 204, 163, 0.4);
+    animation: pulse 2s infinite, slideDown 0.4s ease;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        box-shadow: 0 3px 15px rgba(78, 204, 163, 0.4);
+    }
+    50% {
+        box-shadow: 0 3px 25px rgba(78, 204, 163, 0.7);
+    }
+}
+
+.progress-bar {
+    background: rgba(15, 52, 96, 0.9);
+    color: var(--text-muted);
+    border: 1px solid rgba(100, 100, 150, 0.4);
+    font-size: 0.8rem;
+    padding: var(--spacing-xs) var(--spacing-lg);
+}
+

@@ -1,0 +1,151 @@
+/* 🏗️ APP STRUCTURE */
+.app {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 📱 SCREENS */
+.screen {
+    display: none;
+    min-height: 100vh;
+    padding: var(--spacing-lg);
+    animation: fadeIn 0.4s ease;
+}
+
+.screen.active {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* 🎮 GAME LAYOUT */
+.game-header {
+    width: 100%;
+    max-width: var(--container-max);
+    margin: 0 auto var(--spacing-md);
+    z-index: 100;
+}
+
+.game-main {
+    width: 100%;
+    max-width: var(--container-max);
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    flex-grow: 1;
+}
+
+/* 📦 WRAPPERS */
+.menu-wrapper,
+.waiting-wrapper,
+.results-wrapper {
+    width: 100%;
+    max-width: 500px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* 🎰 TABLE SECTION */
+.table-section {
+    width: 100%;
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.table-wrapper {
+    width: 100%;
+    max-width: 900px;
+    position: relative;
+    min-height: var(--table-min-height);
+}
+
+/* 🎮 CONTROL PANEL */
+.control-panel {
+    width: 100%;
+    background: linear-gradient(145deg, rgba(26, 26, 62, 0.98), rgba(15, 15, 46, 0.98));
+    border-radius: var(--border-radius-lg);
+    border: 2px solid rgba(42, 42, 94, 0.8);
+    box-shadow: var(--shadow-lg);
+    backdrop-filter: blur(20px);
+    padding: var(--spacing-lg);
+    min-height: var(--control-min-height);
+}
+
+.control-content {
+    width: 100%;
+}
+
+/* 🎰 PLAYERS CONTAINER */
+.players-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 20;
+}
+
+.player-wrapper {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: auto;
+    z-index: 10;
+    transition: var(--transition);
+}
+
+/* 📍 PLAYER POSITIONS */
+.player-position-0 {
+    left: 50%;
+    bottom: 0%;
+    transform: translate(-50%, 50%);
+}
+
+.player-position-1 {
+    left: 25%;
+    top: 0%;
+    transform: translate(-50%, -50%);
+}
+
+.player-position-2 {
+    left: 75%;
+    top: 0%;
+    transform: translate(-50%, -50%);
+}
+
+.player-position-3 {
+    left: 0%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.player-position-4 {
+    left: 100%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+

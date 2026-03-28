@@ -1,0 +1,109 @@
+/* 🎬 GLOBAL ANIMATIONS */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideBar {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.9; }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
+@keyframes glow {
+    from {
+        text-shadow: 0 0 20px rgba(233, 69, 96, 0.5);
+        filter: brightness(1);
+    }
+    to {
+        text-shadow: 0 0 40px rgba(255, 215, 0, 0.8), 0 0 60px rgba(233, 69, 96, 0.6);
+        filter: brightness(1.1);
+    }
+}
+
+@keyframes dealCard {
+    0% {
+        transform: translateY(-120px) rotate(-20deg) scale(0.4);
+        opacity: 0;
+    }
+    40% {
+        transform: translateY(15px) rotate(8deg) scale(1.15);
+    }
+    70% {
+        transform: translateY(-5px) rotate(-3deg) scale(0.98);
+    }
+    100% {
+        transform: translateY(0) rotate(0) scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes highlight {
+    0%, 100% {
+        box-shadow: 0 10px 30px rgba(78, 204, 163, 0.5), 0 0 0 2px rgba(78, 204, 163, 0.3);
+    }
+    50% {
+        box-shadow: 0 10px 45px rgba(78, 204, 163, 0.8), 0 0 0 5px rgba(78, 204, 163, 0.5);
+    }
+}
+
+@keyframes jokerPulse {
+    from {
+        text-shadow: 0 0 15px rgba(233, 69, 96, 0.5);
+        transform: scale(1);
+    }
+    to {
+        text-shadow: 0 0 30px rgba(233, 69, 96, 0.8), 0 0 50px rgba(255, 215, 0, 0.5);
+        transform: scale(1.05);
+    }
+}
+
+@keyframes crownBounce {
+    0%, 100% { transform: translateY(0) rotate(-5deg); }
+    50% { transform: translateY(-4px) rotate(5deg); }
+}
+
+@keyframes messageSlide {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes statusFade {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes winnerGlow {
+    from {
+        box-shadow: 0 0 30px rgba(78, 204, 163, 0.4);
+        filter: brightness(1);
+    }
+    to {
+        box-shadow: 0 0 60px rgba(78, 204, 163, 0.7), 0 0 80px rgba(255, 215, 0, 0.4);
+        filter: brightness(1.05);
+    }
+}
+
+/* 🎬 REDUCED MOTION */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+

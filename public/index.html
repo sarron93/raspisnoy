@@ -7,57 +7,100 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="container">
-    <div id="menuScreen" class="screen">
-        <h1 class="title">🎰 РАСПИСНОЙ ПОКЕР ОНЛАЙН 🎰</h1>
-        <p class="subtitle">🏆 Кампания • 5 режимов • 36 карт • 6♠ = Джокер</p>
+<div class="app">
+    <!-- ===== СТАРТОВЫЙ ЭКРАН ===== -->
+    <div id="menuScreen" class="screen active">
+        <div class="menu-wrapper">
+            <h1 class="title">🎰 РАСПИСНОЙ ПОКЕР</h1>
+            <p class="subtitle">🏆 Кампания • 5 режимов • 36 карт • 6♠ = Джокер</p>
 
-        <div class="menu-panel">
-            <div class="input-group">
-                <label for="playerName">👤 Ваше имя:</label>
-                <input type="text" id="playerName" placeholder="Введите имя" maxlength="20">
-            </div>
-
-            <div class="button-group">
-                <button class="btn btn-primary" onclick="game.createRoom()">🏠 Создать комнату</button>
-                <div class="join-room">
-                    <input type="text" id="roomIdInput" placeholder="Код комнаты" maxlength="6">
-                    <button class="btn btn-secondary" onclick="game.joinRoom()">🚪 Войти</button>
+            <div class="menu-panel">
+                <div class="input-group">
+                    <label for="playerName">👤 Ваше имя</label>
+                    <input type="text" id="playerName" placeholder="Введите имя" maxlength="20">
                 </div>
+
+                <div class="button-group">
+                    <button class="btn btn-primary" onclick="game.createRoom()">
+                        🏠 Создать комнату
+                    </button>
+
+                    <div class="join-room">
+                        <input type="text" id="roomIdInput" placeholder="Код комнаты" maxlength="6">
+                        <button class="btn btn-secondary" onclick="game.joinRoom()">
+                            🚪 Войти
+                        </button>
+                    </div>
+                </div>
+
+                <div id="connectionStatus" class="status"></div>
             </div>
-
-            <div id="connectionStatus" class="status"></div>
         </div>
     </div>
 
-    <div id="waitingScreen" class="screen hidden">
-        <h2 style="color: #ffd700; margin-bottom: 20px;">🏠 Комната: <span id="displayRoomId" style="color: #4ecca3;"></span></h2>
-        <div id="playersList" class="players-list"></div>
-        <button id="startBtn" class="btn btn-primary hidden" onclick="game.startGame()">🚀 Начать игру</button>
-        <p class="waiting-text">⏳ Ожидание игроков...</p>
+    <!-- ===== ЭКРАН ОЖИДАНИЯ ===== -->
+    <div id="waitingScreen" class="screen">
+        <div class="waiting-wrapper">
+            <h2 class="room-title">🏠 Комната: <span id="displayRoomId"></span></h2>
+
+            <div class="players-list" id="playersList"></div>
+
+            <button id="startBtn" class="btn btn-primary hidden" onclick="game.startGame()">
+                🚀 Начать игру
+            </button>
+
+            <p class="waiting-text">⏳ Ожидание игроков...</p>
+        </div>
     </div>
 
-    <div id="gameScreen" class="screen hidden">
-        <div class="game-header">
-            <div class="mode-bar" id="modeBar">🎮 Режим</div>
-            <div class="info-bar" id="infoBar">Информация</div>
-            <div class="turn-bar" id="turnBar"></div>
-            <div class="progress-bar" id="progressBar">Прогресс</div>
-        </div>
+    <!-- ===== ИГРОВОЙ ЭКРАН ===== -->
+    <div id="gameScreen" class="screen">
+        <!-- ВЕРХНЯЯ ПАНЕЛЬ -->
+        <header class="game-header">
+            <div class="header-blocks">
+                <div class="mode-bar" id="modeBar"></div>
+                <div class="info-bar" id="infoBar"></div>
+                <div class="turn-bar" id="turnBar"></div>
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+        </header>
 
-        <div class="table-area">
-            <div class="dealer-marker" id="dealerMarker">🎴 ДИЛЕР: </div>
-            <div class="players-area" id="playersArea"></div>
-            <div class="cards-on-table" id="cardsOnTable"></div>
-        </div>
+        <!-- ОСНОВНОЙ КОНТЕНТ -->
+        <main class="game-main">
+            <!-- ПАНЕЛЬ УПРАВЛЕНИЯ (КАРТЫ + ЗАЯВКИ) -->
+            <section class="control-panel" id="controlPanel">
+                <div class="control-content" id="controlArea"></div>
+            </section>
 
-        <div class="control-area" id="controlArea"></div>
+            <!-- ИГРОВОЕ ПОЛЕ (СТОЛ + ИГРОКИ) -->
+            <section class="table-section">
+                <div class="table-wrapper">
+                    <!-- ИГРОКИ ВОКРУГ СТОЛА -->
+                    <div class="players-container" id="playersArea"></div>
+
+                    <!-- СТОЛ -->
+                    <div class="table-area">
+                        <div class="table-inner">
+                            <div class="dealer-marker" id="dealerMarker">🎴 ДИЛЕР</div>
+                            <div class="cards-on-table" id="cardsOnTable"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
     </div>
 
-    <div id="resultsScreen" class="screen hidden">
-        <h1 class="title">🏆 КАМПАНИЯ ЗАВЕРШЕНА 🏆</h1>
-        <div class="leaderboard" id="leaderboard"></div>
-        <button class="btn btn-primary" onclick="location.reload()">🔄 Новая игра</button>
+    <!-- ===== ЭКРАН РЕЗУЛЬТАТОВ ===== -->
+    <div id="resultsScreen" class="screen">
+        <div class="results-wrapper">
+            <h1 class="title">🏆 КАМПАНИЯ ЗАВЕРШЕНА</h1>
+
+            <div class="leaderboard" id="leaderboard"></div>
+
+            <button class="btn btn-primary" onclick="location.reload()">
+                🔄 Новая игра
+            </button>
+        </div>
     </div>
 </div>
 

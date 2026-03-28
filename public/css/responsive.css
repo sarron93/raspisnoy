@@ -1,0 +1,301 @@
+/* 🖥️ LARGE SCREENS (1920px+) */
+@media (min-width: 1920px) {
+    :root {
+        --container-max: 1600px;
+    }
+
+    .table-wrapper {
+        max-width: 1100px;
+        min-height: 500px;
+    }
+
+    .table-area {
+        max-width: 1000px;
+        min-height: 480px;
+    }
+
+    .control-panel {
+        min-height: 160px;
+    }
+
+    .player-position-0 {
+        bottom: 2%;
+        transform: translate(-50%, 60%);
+    }
+
+    .player-position-1, .player-position-2 {
+        top: 2%;
+        transform: translate(-50%, -60%);
+    }
+}
+
+/* 💻 MEDIUM SCREENS (1366px - 1919px) */
+@media (min-width: 1366px) and (max-width: 1919px) {
+    :root {
+        --container-max: 1300px;
+    }
+
+    .table-wrapper {
+        max-width: 900px;
+        min-height: 450px;
+    }
+
+    .table-area {
+        max-width: 800px;
+        min-height: 420px;
+    }
+
+    .control-panel {
+        min-height: 150px;
+    }
+}
+
+/* 📱 TABLETS (768px - 1024px) */
+@media (max-width: 1024px) {
+    .table-wrapper {
+        max-width: 700px;
+        min-height: 400px;
+    }
+
+    .table-area {
+        min-height: 360px;
+        padding: var(--spacing-lg);
+    }
+
+    .cards-on-table {
+        min-width: 200px;
+        min-height: 100px;
+    }
+
+    .control-panel {
+        min-height: 130px;
+    }
+
+    .player-position-0 {
+        bottom: 0%;
+        transform: translate(-50%, 50%);
+    }
+
+    .player-position-1, .player-position-2 {
+        top: 0%;
+        transform: translate(-50%, -50%);
+    }
+}
+
+/* 📱 SMALL TABLETS (768px) */
+@media (max-width: 768px) {
+    .screen {
+        padding: var(--spacing-lg);
+    }
+
+    .game-header {
+        margin-bottom: var(--spacing-md);
+    }
+
+    .mode-bar, .info-bar, .turn-bar, .progress-bar {
+        padding: var(--spacing-sm) var(--spacing-md);
+        font-size: 0.8rem;
+    }
+
+    .table-wrapper {
+        max-width: 600px;
+        min-height: 360px;
+    }
+
+    .table-area {
+        min-height: 320px;
+        border-radius: 45% / 35%;
+        padding: var(--spacing-lg);
+    }
+
+    .cards-on-table {
+        min-width: 160px;
+        min-height: 90px;
+        gap: var(--spacing-md);
+        padding: var(--spacing-md);
+    }
+
+    .control-panel {
+        padding: var(--spacing-md) var(--spacing-lg);
+        min-height: 130px;
+    }
+
+    .player-card {
+        min-width: 100px;
+        max-width: 120px;
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+
+    .player-avatar {
+        width: 28px;
+        height: 28px;
+        font-size: 0.9rem;
+    }
+
+    .player-name {
+        font-size: 0.85rem;
+    }
+
+    .player-stats {
+        font-size: 0.65rem;
+        gap: 2px var(--spacing-sm);
+    }
+
+    .player-full-hand {
+        gap: var(--spacing-sm);
+        padding: var(--spacing-md);
+        max-width: 180px;
+    }
+
+    .player-card-mini {
+        width: 32px;
+        height: 48px;
+        font-size: 0.6rem;
+    }
+
+    .player-position-0 {
+        bottom: 0%;
+        transform: translate(-50%, 60%);
+    }
+
+    .player-position-1 {
+        left: 20%;
+        top: 0%;
+        transform: translate(-50%, -60%);
+    }
+
+    .player-position-2 {
+        left: 80%;
+        top: 0%;
+        transform: translate(-50%, -60%);
+    }
+
+    .player-position-3 {
+        left: 0%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+    }
+
+    .player-position-4 {
+        left: 100%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+    }
+}
+
+/* 📱 MOBILE (480px) */
+@media (max-width: 480px) {
+    .screen {
+        padding: var(--spacing-md);
+    }
+
+    .title {
+        font-size: 1.8rem;
+    }
+
+    .subtitle {
+        font-size: 1rem;
+    }
+
+    .game-header {
+        margin-bottom: var(--spacing-sm);
+    }
+
+    .mode-bar, .info-bar, .turn-bar, .progress-bar {
+        padding: var(--spacing-xs) var(--spacing-md);
+        font-size: 0.75rem;
+    }
+
+    .info-bar {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+    }
+
+    .table-wrapper {
+        max-width: 100%;
+        min-height: 300px;
+    }
+
+    .table-area {
+        min-height: 280px;
+        border-radius: 40% / 35%;
+        padding: var(--spacing-md);
+    }
+
+    .cards-on-table {
+        grid-template-columns: 1fr;
+        min-width: 140px;
+        min-height: 160px;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-md);
+    }
+
+    .control-panel {
+        padding: var(--spacing-md);
+        min-height: 120px;
+    }
+
+    .player-card {
+        min-width: 85px;
+        max-width: 100px;
+        padding: var(--spacing-sm);
+    }
+
+    .player-avatar {
+        width: 26px;
+        height: 26px;
+        font-size: 0.85rem;
+    }
+
+    .player-name {
+        font-size: 0.75rem;
+    }
+
+    .player-stats {
+        font-size: 0.55rem;
+        grid-template-columns: 1fr;
+        gap: 2px;
+    }
+
+    .player-full-hand {
+        gap: var(--spacing-xs);
+        padding: var(--spacing-sm) var(--spacing-md);
+        max-width: 150px;
+    }
+
+    .player-card-mini {
+        width: 28px;
+        height: 42px;
+        font-size: 0.55rem;
+    }
+
+    .player-position-0 {
+        bottom: 0%;
+        transform: translate(-50%, 70%);
+    }
+
+    .player-position-1 {
+        left: 15%;
+        top: 0%;
+        transform: translate(-50%, -70%);
+    }
+
+    .player-position-2 {
+        left: 85%;
+        top: 0%;
+        transform: translate(-50%, -70%);
+    }
+
+    .player-position-3 {
+        left: 0%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+    }
+
+    .player-position-4 {
+        left: 100%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+    }
+}
+
