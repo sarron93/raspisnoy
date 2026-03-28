@@ -10,6 +10,10 @@ const io = socketIo(server);
 
 app.use(express.static('public'));
 
+app.get('/', (req, res) => {
+    res.status(200).send('yooooo');
+});
+
 const rooms = {};
 
 const SUITS = ['♠', '♥', '♦', '♣'];
