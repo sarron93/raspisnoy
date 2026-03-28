@@ -76,7 +76,7 @@ app.get('/', (req, res) => {
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
-<script src="public/game.js"></script>
+<script src="/public/game.js"></script>
 </body>
 </html>
 
