@@ -7,6 +7,13 @@ class OnlinePokerGame {
         this.myHand = [];
         this.isProcessing = false;
 
+        // ✅ РЕКОННЕКТ ЛОГИКА
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+        this.reconnectDelay = 1000; // 1 секунда
+        this.isReconnecting = false;
+        this.wasInGame = false;
+
         this.setupSocketListeners();
     }
 
@@ -14,17 +21,57 @@ class OnlinePokerGame {
         this.socket.on('connect', () => {
             console.log('✅ Подключено к серверу');
             this.updateStatus('✅ Подключено', 'success');
+
+            // ✅ Если были в игре и переподключились — пробуем восстановить
+            if (this.isReconnecting && this.wasInGame && this.roomId && this.playerIdx !== null) {
+                console.log('🔄 Восстановление соединения, запрашиваем состояние...');
+                this.reconnectAttempts = 0;
+                this.isReconnecting = false;
+                this.requestGameState();
+            }
         });
 
-        this.socket.on('disconnect', () => {
-            console.log('❌ Отключено от сервера');
+        this.socket.on('disconnect', (reason) => {
+            console.log('❌ Отключено от сервера:', reason);
+            this.wasInGame = this.gameState && this.gameState.gameState === 'playing';
             this.updateStatus('❌ Отключено', 'error');
+
+            // ✅ Пытаемся переподключиться если были в игре
+            if (this.wasInGame) {
+                this.attemptReconnect();
+            }
+        });
+
+        this.socket.on('connect_error', (error) => {
+            console.error('⚠️ Ошибка подключения:', error.message);
+            this.updateStatus('⚠️ Ошибка подключения', 'error');
+        });
+
+        this.socket.on('reconnect_attempt', (attemptNumber) => {
+            console.log(`🔄 Попытка переподключения ${attemptNumber}/${this.maxReconnectAttempts}`);
+            this.updateStatus(`🔄 Переподключение... (${attemptNumber}/${this.maxReconnectAttempts})`, 'warning');
+        });
+
+        this.socket.on('reconnect_failed', () => {
+            console.error('❌ Все попытки переподключения исчерпаны');
+            this.updateStatus('❌ Не удалось подключиться', 'error');
+            this.isReconnecting = false;
+
+            // ✅ Возвращаем в меню после неудачи
+            if (this.wasInGame) {
+                setTimeout(() => {
+                    alert('❌ Не удалось восстановить соединение\n\nВы вернётесь в главное меню.');
+                    this.showScreen('menuScreen');
+                    this.wasInGame = false;
+                }, 1000);
+            }
         });
 
         this.socket.on('roomCreated', ({ roomId, playerIdx }) => {
             console.log('🏠 Комната создана:', roomId);
             this.roomId = roomId;
             this.playerIdx = playerIdx;
+            this.wasInGame = false;
             document.getElementById('displayRoomId').textContent = roomId;
             this.showScreen('waitingScreen');
             this.updatePlayersList();
@@ -34,6 +81,7 @@ class OnlinePokerGame {
             console.log('🚪 В комнате:', roomId);
             this.roomId = roomId;
             this.playerIdx = playerIdx;
+            this.wasInGame = false;
             document.getElementById('displayRoomId').textContent = roomId;
             this.showScreen('waitingScreen');
             this.updatePlayersList();
@@ -54,6 +102,7 @@ class OnlinePokerGame {
         this.socket.on('gameStarted', (state) => {
             console.log('🎮 Игра началась!');
             this.gameState = state;
+            this.wasInGame = true;
             this.showScreen('gameScreen');
             this.requestGameState();
         });
@@ -81,7 +130,33 @@ class OnlinePokerGame {
         this.socket.on('gameFinished', (state) => {
             console.log('🏆 Игра завершена!');
             this.gameState = state;
+            this.wasInGame = false;
             this.showResults();
+        });
+
+        this.socket.on('gameAborted', ({ reason, finalState }) => {
+            console.log('🏁 Игра прервана:', reason);
+            this.wasInGame = false;
+            alert(`🏁 ${reason}\n\nРаунд завершён досрочно.`);
+            this.showScreen('menuScreen');
+            this.updateStatus('🔄 Готов к новой игре', 'success');
+        });
+
+        this.socket.on('playerDisconnected', ({ playerName, reason, gameState }) => {
+            console.log('⚠️ Игрок отключился:', playerName, reason);
+            alert(`⚠️ ${reason}\n\nИгрок "${playerName}" покинул стол.\n\nИгра будет завершена.`);
+            this.wasInGame = false;
+            this.showScreen('menuScreen');
+            this.updateStatus('⚠️ Игра прервана', 'error');
+        });
+
+        this.socket.on('roomClosed', ({ reason }) => {
+            console.log('🚪 Комната закрыта:', reason);
+            this.wasInGame = false;
+            alert(`🚪 ${reason}\n\nВы вернётесь в главное меню.`);
+            this.showScreen('menuScreen');
+            this.roomId = null;
+            this.playerIdx = null;
         });
 
         this.socket.on('error', (error) => {
@@ -95,33 +170,49 @@ class OnlinePokerGame {
                 alert('⚠️ ' + error);
             }
             this.updateStatus(error, 'error');
+            this.isProcessing = false;
         });
+    }
 
-        // ✅ Обработчик: игрок отключился во время игры
-        this.socket.on('playerDisconnected', ({ playerName, reason, gameState }) => {
-            console.log('⚠️ Игрок отключился:', playerName, reason);
+    attemptReconnect() {
+        if (this.isReconnecting) return;
 
-            // ✅ Показываем уведомление
-            alert(`⚠️ ${reason}\n\nИгрок "${playerName}" покинул стол.\n\nИгра будет завершена.`);
+        this.isReconnecting = true;
+        this.reconnectAttempts = 0;
 
-            // ✅ Возвращаем в меню
-            this.showScreen('menuScreen');
-            this.updateStatus('⚠️ Игра прервана', 'error');
-        });
+        console.log('🔄 Запуск процесса переподключения...');
 
-        // ✅ Обработчик: игра прервана
-        this.socket.on('gameAborted', ({ reason, finalState }) => {
-            console.log('🏁 Игра прервана:', reason);
+        const tryReconnect = () => {
+            if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+                console.error('❌ Все попытки переподключения исчерпаны');
+                this.isReconnecting = false;
+                return;
+            }
 
-            // ✅ Показываем финальное уведомление
-            alert(`🏁 ${reason}\n\nРаунд завершён досрочно.`);
+            this.reconnectAttempts++;
+            console.log(`🔄 Попытка ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
 
-            // ✅ Возвращаем в главное меню
-            this.showScreen('menuScreen');
-            this.updateStatus('🔄 Готов к новой игре', 'success');
-        });
+            this.updateStatus(`🔄 Переподключение... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`, 'warning');
 
+            // ✅ Пытаемся подключиться
+            this.socket.connect();
 
+            // ✅ Если не подключились за 3 секунды — пробуем снова
+            setTimeout(() => {
+                if (!this.socket.connected && this.isReconnecting) {
+                    tryReconnect();
+                }
+            }, 3000);
+        };
+
+        tryReconnect();
+    }
+
+    // ✅ МЕТОД: Сброс состояния реконнекта
+    resetReconnectState() {
+        this.reconnectAttempts = 0;
+        this.isReconnecting = false;
+        this.wasInGame = false;
     }
 
     createRoom() {

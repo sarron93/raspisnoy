@@ -6,11 +6,16 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
+const io = socketIo(server, {
+    pingTimeout: 60000,  // ✅ Таймаут пинга 60 секунд
+    pingInterval: 25000  // ✅ Интервал пинга 25 секунд
+});
 
 app.use(express.static('public'));
 
 const rooms = {};
+const roomTimers = {};  // ✅ Таймеры для авто-закрытия комнат
+const ROOM_CLOSE_TIMEOUT = 60000; // ✅ 1 минута до закрытия
 
 const SUITS = ['♠', '♥', '♦', '♣'];
 const RANKS = ['6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
@@ -662,6 +667,14 @@ io.on('connection', (socket) => {
             socket.join(roomId);
             socket.emit('roomJoined', { roomId, playerIdx: result.playerIdx });
             io.to(roomId).emit('playerJoined', room.getGameState());
+
+            // ✅ Сбрасываем таймер закрытия если игрок вернулся
+            if (roomTimers[roomId]) {
+                clearTimeout(roomTimers[roomId]);
+                delete roomTimers[roomId];
+                console.log(`⏱️ Таймер закрытия комнаты ${roomId} сброшен`);
+            }
+
             console.log(`👥 Игрок ${playerName} присоединился к ${roomId}`);
         } else {
             socket.emit('error', result.error);
@@ -729,8 +742,8 @@ io.on('connection', (socket) => {
         socket.emit('gameState', state);
     });
 
-    socket.on('disconnect', () => {
-        console.log('🔌 Игрок отключился:', socket.id);
+    socket.on('disconnect', (reason) => {
+        console.log('🔌 Игрок отключился:', socket.id, 'Причина:', reason);
 
         for (const roomId in rooms) {
             const room = rooms[roomId];
@@ -739,42 +752,81 @@ io.on('connection', (socket) => {
             if (playerIdx !== -1) {
                 const playerName = room.players[playerIdx].name;
                 const isGameActive = room.gameState === 'playing' || room.gameState === 'bidding';
+                const remainingPlayers = room.players.filter(p => p.isConnected).length - 1;
 
-                // ✅ Помечаем игрока как отключённого
+                // ✅ Помечаем игрока как отключённого (не удаляем сразу)
                 room.players[playerIdx].isConnected = false;
+                room.players[playerIdx].disconnectTime = Date.now();
 
-                // ✅ Если игра активна — уведомляем всех и завершаем
-                if (isGameActive) {
-                    console.log(`⚠️ Игрок ${playerName} покинул активную игру в комнате ${roomId}`);
+                console.log(`📝 Игрок ${playerName} отключён. Осталось активных: ${remainingPlayers}`);
 
-                    // ✅ Отправляем уведомление всем игрокам
-                    io.to(roomId).emit('playerDisconnected', {
-                        playerName: playerName,
-                        reason: 'Игрок покинул игру',
-                        gameState: room.getGameState()
-                    });
-
-                    // ✅ Завершаем игру с флагом "прервана"
-                    io.to(roomId).emit('gameAborted', {
-                        reason: `Игрок "${playerName}" покинул стол`,
-                        finalState: room.getGameState()
-                    });
-
-                    // ✅ Очищаем комнату
+                // ✅ Если это был последний игрок — закрываем комнату сразу
+                if (remainingPlayers <= 0) {
+                    console.log(`🗑️ Комната ${roomId} закрыта (нет игроков)`);
+                    io.to(roomId).emit('roomClosed', { reason: 'Все игроки покинули комнату' });
+                    clearTimeout(roomTimers[roomId]);
+                    delete roomTimers[roomId];
                     delete rooms[roomId];
-                    console.log(`🗑️ Комната ${roomId} удалена (игра прервана)`);
                     break;
                 }
 
-                // ✅ Если игра ещё не началась — просто удаляем игрока
+                // ✅ Если игра активна — запускаем таймер закрытия
+                if (isGameActive) {
+                    console.log(`⏱️ Запуск таймера закрытия комнаты ${roomId} (${ROOM_CLOSE_TIMEOUT/1000} сек)`);
+
+                    // ✅ Очищаем предыдущий таймер если был
+                    if (roomTimers[roomId]) {
+                        clearTimeout(roomTimers[roomId]);
+                    }
+
+                    // ✅ Уведомляем остальных игроков
+                    io.to(roomId).emit('playerDisconnected', {
+                        playerName: playerName,
+                        reason: 'Игрок отключился',
+                        gameState: room.getGameState()
+                    });
+
+                    // ✅ Запускаем таймер закрытия
+                    roomTimers[roomId] = setTimeout(() => {
+                        console.log(`⏰ Таймаут комнаты ${roomId}. Закрытие...`);
+
+                        // ✅ Проверяем вернулся ли игрок
+                        const playerReturned = room.players[playerIdx].isConnected;
+
+                        if (!playerReturned) {
+                            // ✅ Уведомляем всех о закрытии
+                            io.to(roomId).emit('gameAborted', {
+                                reason: `Игрок "${playerName}" не подключился в течение 1 минуты`,
+                                finalState: room.getGameState()
+                            });
+
+                            io.to(roomId).emit('roomClosed', {
+                                reason: 'Комната закрыта по таймауту'
+                            });
+
+                            // ✅ Очищаем комнату
+                            delete roomTimers[roomId];
+                            delete rooms[roomId];
+                            console.log(`🗑️ Комната ${roomId} удалена (таймаут)`);
+                        } else {
+                            console.log(`✅ Игрок ${playerName} вернулся до закрытия комнаты`);
+                            delete roomTimers[roomId];
+                        }
+                    }, ROOM_CLOSE_TIMEOUT);
+
+                    break;
+                }
+
+                // ✅ Если игра не активна (лобби) — удаляем игрока сразу
                 room.players.splice(playerIdx, 1);
 
-                // ✅ Если комната пустая — удаляем её
+                // ✅ Если комната пустая — удаляем
                 if (room.players.length === 0) {
+                    clearTimeout(roomTimers[roomId]);
+                    delete roomTimers[roomId];
                     delete rooms[roomId];
                     console.log(`🗑️ Комната ${roomId} удалена (пустая)`);
                 } else {
-                    // ✅ Уведомляем остальных, что игрок вышел (только в лобби)
                     io.to(roomId).emit('playerLeft', room.getGameState());
                     console.log(`👤 Игрок ${playerName} вышел из комнаты ${roomId} (лобби)`);
                 }
@@ -782,7 +834,6 @@ io.on('connection', (socket) => {
             }
         }
     });
-
 });
 
 const PORT = process.env.PORT || 3000;
