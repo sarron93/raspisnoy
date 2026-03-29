@@ -21,8 +21,7 @@
 
     /* 📐 SIZING */
     --header-height: auto;
-    --control-min-height: 140px;
-    --table-min-height: 400px;
+    --table-min-height: 600px;
     --border-radius-sm: 8px;
     --border-radius: 12px;
     --border-radius-lg: 16px;
@@ -51,3 +50,6 @@
     --anim-glow: glow 3s ease-in-out infinite alternate;
 }
 
+*, ::before, ::after {
+  box-sizing: border-box;
+}
