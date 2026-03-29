@@ -39,7 +39,7 @@
     color: var(--secondary);
     border: 1px solid rgba(78, 204, 163, 0.4);
     font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 0.85rem;
+    font-size: 1.5rem;
     display: flex;
     justify-content: center;
     align-items: center;

@@ -43,7 +43,6 @@
     }
 
     .cards-on-table {
-        min-width: 200px;
         min-height: 100px;
     }
 
@@ -79,7 +78,6 @@
     }
 
     .cards-on-table {
-        min-width: 160px;
         min-height: 90px;
         gap: var(--spacing-md);
         padding: var(--spacing-md);
@@ -183,7 +181,6 @@
 
     .cards-on-table {
         grid-template-columns: 1fr;
-        min-width: 140px;
         min-height: 160px;
         gap: var(--spacing-sm);
         padding: var(--spacing-md);
