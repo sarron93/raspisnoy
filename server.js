@@ -545,20 +545,15 @@ class OnlineGame {
             console.log(`🏆 Взятку выиграл игрок ${winner} (${this.players[winner].name}) с картой ${winningCard.rank}${winningCard.suit}`);
             console.log(`📊 Всего взяток: ${this.currentTrick}/${this.cardsPerRound}`);
 
-            // ✅ ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ О ПОБЕДИТЕЛЕ ВСЕМ ИГРОКАМ
-            io.to(this.roomId).emit('trickWon', {
-                winnerIdx: winner,
-                winnerName: this.players[winner].name,
-                card: winningCard.toJSON(),
-                trickNumber: this.currentTrick,
-                totalTricks: this.cardsPerRound
-            });
+            // ✅ ОТПРАВЛЯЕМ СОСТОЯНИЕ С КАРТАМИ НА СТОЛЕ
+            const gameState = this.getGameState();
+            io.to(this.roomId).emit('cardPlayed', gameState);
 
             // ✅ ПРОВЕРЯЕМ ЗАВЕРШЕНИЕ РАУНДА
             if (this.currentTrick >= this.cardsPerRound) {
                 console.log('🎯 Раунд завершен');
 
-                // ✅ ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ О ЗАВЕРШЕНИИ РАУНДА (с задержкой)
+                // ✅ ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ О ЗАВЕРШЕНИИ РАУНДА
                 io.to(this.roomId).emit('roundFinished', {
                     roundNumber: this.modeRoundCount + 1,
                     totalRounds: this.actualRounds,
@@ -574,13 +569,21 @@ class OnlineGame {
                     return this.endRound();
                 }, 5000);
 
-                // ✅ Возвращаем состояние но не вызываем endRound сразу
-                return { success: true, gameState: this.getGameState(), roundEnded: true };
+                return { success: true, gameState: gameState, roundEnded: true };
             }
 
-            this.cardsPlayedThisTrick = [];
-            this.leadSuit = null;
-            console.log('🎴 Взятка завершена, сброс leadSuit');
+            // ✅ ПАУЗА 3 СЕКУНДЫ ПЕРЕД СБРОСОМ КАРТ (чтобы все увидели)
+            setTimeout(() => {
+                this.cardsPlayedThisTrick = [];
+                this.leadSuit = null;
+                console.log('🎴 Взятка завершена, сброс leadSuit');
+
+                // ✅ ОТПРАВЛЯЕМ ОБНОВЛЁННОЕ СОСТОЯНИЕ (пустой стол)
+                io.to(this.roomId).emit('trickCleared', this.getGameState());
+            }, 3000);
+
+            // ✅ Возвращаем состояние но не очищаем стол сразу
+            return { success: true, gameState: gameState, trickEnded: true };
         }
 
         return { success: true, gameState: this.getGameState() };

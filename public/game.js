@@ -116,14 +116,26 @@ class OnlinePokerGame {
         this.socket.on('cardPlayed', (state) => {
             console.log('🃏 Карта сыграна');
 
-            // ✅ Если раунд завершен — не запрашиваем состояние сразу
             if (state.roundEnded) {
+                // ✅ Раунд завершен — ждём roundFinished
                 this.gameState = state;
-                // ✅ Ждём roundStarted для обновления
+            } else if (state.trickEnded) {
+                // ✅ Взятка завершена — карты остаются на столе 3 секунды
+                this.gameState = state;
+                this.updateGameDisplay();
+                // ✅ Ждём trickCleared для очистки стола
             } else {
+                // ✅ Обычный ход
                 this.gameState = state;
-                this.requestGameState();
+                this.updateGameDisplay();
             }
+        });
+
+        // ✅ НОВЫЙ ОБРАБОТЧИК: Карты очищены со стола
+        this.socket.on('trickCleared', (state) => {
+            console.log('🎴 Карты очищены со стола');
+            this.gameState = state;
+            this.updateGameDisplay();
         });
 
         this.socket.on('gameState', (state) => {
@@ -180,22 +192,11 @@ class OnlinePokerGame {
             this.isProcessing = false;
         });
 
-        // ✅ ОБРАБОТЧИК: Взятка выиграна
-        this.socket.on('trickWon', ({ winnerIdx, winnerName, card, trickNumber, totalTricks }) => {
-            console.log('🏆 Взятку выиграл:', winnerName, 'с картой', card.rank + card.suit);
-
-            // ✅ Показываем уведомление
-            this.showTrickWonNotification(winnerName, card, trickNumber, totalTricks);
-
-            // ✅ Запрашиваем обновлённое состояние
-            setTimeout(() => this.requestGameState(), 2500);
-        });
-
-        // ✅ ОБРАБОТЧИК: Раунд завершен (пауза перед следующим)
+        // ✅ ОБРАБОТЧИК: Раунд завершен
         this.socket.on('roundFinished', ({ roundNumber, totalRounds, playersScores }) => {
             console.log('🎯 Раунд завершен:', roundNumber, 'из', totalRounds);
 
-            // ✅ Показываем красивое уведомление
+            // ✅ Показываем уведомление о завершении раунда
             this.showRoundFinishedNotification(roundNumber, totalRounds, playersScores);
 
             // ✅ Блокируем интерфейс на время паузы
@@ -851,59 +852,6 @@ class OnlinePokerGame {
             div.innerHTML = `<span style="font-size: 1.3em;">${medal}</span> ${idx + 1}. ${player.name} — <strong style="color: #4ecca3;">${player.score}</strong> очков`;
             leaderboard.appendChild(div);
         });
-    }
-
-    // ✅ МЕТОД: Показ уведомления о победе во взятке
-    showTrickWonNotification(winnerName, card, trickNumber, totalTricks) {
-        // ✅ Создаём уведомление
-        const notification = document.createElement('div');
-        notification.className = 'trick-won-notification';
-
-        const cardSuit = card.isSixSpades ? 'joker' :
-            card.suit === '♥' || card.suit === '♦' ? 'hearts' : 'spades';
-        const cardText = card.isSixSpades ? '6♠🃏' : `${card.rank}${card.suit}`;
-
-        notification.innerHTML = `
-        <div class="trophy">🏆</div>
-        <div class="winner-title">Взятку выиграл</div>
-        <div class="winner-name">${winnerName}</div>
-        <div class="winning-card ${cardSuit}">${cardText}</div>
-        <div class="trick-info">Взятка ${trickNumber} из ${totalTricks}</div>
-    `;
-
-        document.body.appendChild(notification);
-
-        // ✅ Создаём конфетти
-        this.createConfetti(30);
-
-        // ✅ Удаляем уведомление через 3 секунды
-        setTimeout(() => {
-            notification.style.animation = 'trickWonSlide 0.4s ease reverse forwards';
-            setTimeout(() => {
-                notification.remove();
-            }, 400);
-        }, 3000);
-    }
-
-// ✅ МЕТОД: Создание конфетти
-    createConfetti(count = 30) {
-        const colors = ['#e94560', '#4ecca3', '#ffd700', '#ff6b6b', '#7ee8c7'];
-
-        for (let i = 0; i < count; i++) {
-            const confetti = document.createElement('div');
-            confetti.className = 'confetti';
-            confetti.style.left = Math.random() * 100 + 'vw';
-            confetti.style.background = colors[Math.floor(Math.random() * colors.length)];
-            confetti.style.animationDelay = Math.random() * 0.5 + 's';
-            confetti.style.animationDuration = (Math.random() * 2 + 2) + 's';
-
-            document.body.appendChild(confetti);
-
-            // ✅ Удаляем конфетти после анимации
-            setTimeout(() => {
-                confetti.remove();
-            }, 4000);
-        }
     }
 }
 
