@@ -131,18 +131,35 @@ class OnlinePokerGame {
             }
         });
 
-        // ✅ НОВЫЙ ОБРАБОТЧИК: Карты очищены со стола
+        // ✅ ОБРАБОТЧИК: Карты очищены со стола
         this.socket.on('trickCleared', (state) => {
             console.log('🎴 Карты очищены со стола');
+            console.log('🃏 Карт в руке:', state.hand?.length || 0);
+            console.log('📊 cardsOnTable:', state.cardsOnTable?.length || 0);
+
+            // ✅ Обновляем gameState но НЕ myHand (он придёт с gameState)
             this.gameState = state;
-            this.updateGameDisplay();
+
+            // ✅ Обновляем интерфейс чтобы показать пустой стол
+            this.updateCardsOnTable();
+            this.updateHeaders();
+
+            console.log('⏳ Ждём gameState с рукой...');
         });
 
         this.socket.on('gameState', (state) => {
             console.log('📊 Получено состояние игры');
+            console.log('🃏 Карт в руке:', state.hand?.length || 0);
+            console.log('📊 cardsOnTable:', state.cardsOnTable?.length || 0);
+            console.log('🎮 gameState:', state.gameState);
+            console.log('🎯 trickLeader:', state.trickLeader);
+
             this.gameState = state;
-            this.myHand = state.hand || [];
+            this.myHand = state.hand || [];  // ✅ ВАЖНО: обновляем руку
             this.isProcessing = false;
+
+            console.log('✅ myHand обновлён:', this.myHand.length, 'карт');
+
             this.updateGameDisplay();
         });
 
@@ -206,8 +223,10 @@ class OnlinePokerGame {
         // ✅ ОБРАБОТЧИК: Новый раунд начался
         this.socket.on('roundStarted', (state) => {
             console.log('🎴 Новый раунд начался');
+            console.log('🃏 Карт в руке:', state.hand?.length || 0);
+
             this.gameState = state;
-            this.myHand = state.hand || [];
+            this.myHand = state.hand || [];  // ✅ ВАЖНО: обновляем руку
             this.isProcessing = false;
             this.updateGameDisplay();
         });
@@ -629,15 +648,29 @@ class OnlinePokerGame {
     }
 
     getCurrentPlayerIdx() {
-        if (!this.gameState) return null;
-
-        if (this.gameState.gameState === 'bidding') {
-            return this.gameState.currentPlayer !== undefined ? this.gameState.currentPlayer : null;
+        if (!this.gameState) {
+            console.log('❌ gameState is null');
+            return null;
         }
 
+        // ✅ ФАЗА ТОРГОВЛИ
+        if (this.gameState.gameState === 'bidding') {
+            const idx = this.gameState.currentPlayer !== undefined ? this.gameState.currentPlayer : null;
+            console.log('📢 bidding currentPlayer:', idx);
+            return idx;
+        }
+
+        // ✅ ФАЗА РОЗЫГРЫША
         if (this.gameState.gameState === 'playing') {
             const cardsPlayed = this.gameState.cardsOnTable ? this.gameState.cardsOnTable.length : 0;
-            return (this.gameState.trickLeader + cardsPlayed) % this.gameState.players.length;
+            const currentPlayerIdx = (this.gameState.trickLeader + cardsPlayed) % this.gameState.players.length;
+            console.log('🎴 playing currentPlayerIdx:', {
+                trickLeader: this.gameState.trickLeader,
+                cardsPlayed: cardsPlayed,
+                playersLength: this.gameState.players.length,
+                result: currentPlayerIdx
+            });
+            return currentPlayerIdx;
         }
 
         return null;
@@ -692,7 +725,32 @@ class OnlinePokerGame {
         const mode = this.gameState.mode;
         const isBlind = mode.includes('Слепая');
         const isBidding = this.gameState.gameState === 'bidding';
-        const isMyTurn = this.gameState.currentPlayer === this.playerIdx;
+
+        // ✅ ПРАВИЛЬНОЕ ОПРЕДЕЛЕНИЕ ЧЕЙ ХОД
+        const currentPlayerIdx = this.getCurrentPlayerIdx();
+        const isMyTurn = currentPlayerIdx === this.playerIdx;
+
+        // ✅ ОТЛАДКА
+        console.log('🎨 updateControlArea:', {
+            gameState: this.gameState.gameState,
+            playerIdx: this.playerIdx,
+            currentPlayerIdx: currentPlayerIdx,
+            currentPlayer: this.gameState.currentPlayer,
+            trickLeader: this.gameState.trickLeader,
+            cardsOnTable: this.gameState.cardsOnTable?.length || 0,
+            isMyTurn: isMyTurn,
+            myHandLength: this.myHand?.length || 0
+        });
+
+        // ✅ ПРОВЕРКА НАЛИЧИЯ РУКИ
+        if (!this.myHand || this.myHand.length === 0) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message';
+            msgDiv.textContent = '⏳ Ожидание карт...';
+            area.appendChild(msgDiv);
+            console.log('⚠️ myHand пустой!');
+            return;
+        }
 
         if (isBlind && this.myHand && this.myHand.length > 0) {
             const msgDiv = document.createElement('div');
@@ -701,16 +759,17 @@ class OnlinePokerGame {
             area.appendChild(msgDiv);
         }
 
-        // ✅ ПОКАЗЫВАЕМ ТОРГОВЛЮ (ТОЛЬКО КЛАССИКА, БЕСКОЗЫРКА, СЛЕПАЯ)
+        // ✅ ТОРГОВЛЯ
         if (isBidding && isMyTurn) {
+            console.log('📢 Показываем торговлю');
             this.showBiddingInterface(area);
             return;
         }
 
-        // ✅ ПОКАЗЫВАЕМ ИНТЕРФЕЙС ИГРЫ
+        // ✅ РОЗЫГРЫШ
         if (this.gameState.gameState === 'playing') {
-            const currentPlayerIdx = this.getCurrentPlayerIdx();
-            if (currentPlayerIdx === this.playerIdx) {
+            if (isMyTurn) {
+                console.log('🎴 Мой ход!');
                 this.showPlayHints(area);
             } else {
                 const msg = document.createElement('div');
@@ -732,7 +791,7 @@ class OnlinePokerGame {
             return;
         }
 
-        // ✅ ПО УМОЛЧАНИЮ (БЕЗ ТОРГОВЛИ)
+        // ✅ ПО УМОЛЧАНИЮ
         const msg = document.createElement('div');
         msg.className = 'message success';
         msg.textContent = `🎴 РОЗЫГРЫШ! Следите за ходом...`;
