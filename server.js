@@ -437,6 +437,7 @@ class OnlineGame {
             p.bid = -1;
             p.tricks = 0;
             p.hasBid = false;
+            console.log(`🃏 ${p.name} получил ${p.hand.length} карт`);  // ✅ ЛОГ
         });
 
         if (mode !== GameMode.NO_TRUMP && this.deck.size() > 0) {
@@ -458,12 +459,10 @@ class OnlineGame {
         }
         this.currentPlayerIdx = 0;
 
-        // ✅ ПРОВЕРКА: ЕСТЬ ЛИ ТОРГОВЛЯ В ЭТОМ РЕЖИМЕ
         if (mode.hasBidding) {
             this.gameState = 'bidding';
             console.log(`🎴 Раунд ${this.modeRoundCount + 1}/${this.actualRounds}: ${this.cardsPerRound} карт, козырь: ${this.trumpSuit || 'нет'} (ТОРГОВЛЯ)`);
         } else {
-            // ✅ АВТОМАТИЧЕСКИ НАЗНАЧАЕМ ЗАЯВКИ
             this.autoAssignBids();
             this.gameState = 'playing';
             console.log(`🎴 Раунд ${this.modeRoundCount + 1}/${this.actualRounds}: ${this.cardsPerRound} карт, козырь: ${this.trumpSuit || 'нет'} (БЕЗ ТОРГОВЛИ)`);
@@ -572,15 +571,25 @@ class OnlineGame {
                 return { success: true, gameState: gameState, roundEnded: true };
             }
 
-            // ✅ ПАУЗА 3 СЕКУНДЫ ПЕРЕД СБРОСОМ КАРТ (чтобы все увидели)
+            // ✅ ПАУЗА 3 СЕКУНДЫ ПЕРЕД СБРОСОМ КАРТ
             setTimeout(() => {
                 this.cardsPlayedThisTrick = [];
                 this.leadSuit = null;
                 console.log('🎴 Взятка завершена, сброс leadSuit');
 
-                // ✅ ОТПРАВЛЯЕМ ОБНОВЛЁННОЕ СОСТОЯНИЕ (пустой стол)
-                io.to(this.roomId).emit('trickCleared', this.getGameState());
+                // ✅ ОТПРАВЛЯЕМ СОСТОЯНИЕ КАЖДОМУ ИГРОКУ С ЕГО РУКОЙ
+                this.players.forEach((player, idx) => {
+                    const socket = this.players[idx].socketId;
+                    if (socket) {
+                        const stateWithHand = this.getGameStateWithHand(idx);
+                        io.to(socket).emit('gameState', stateWithHand);
+                        console.log(`📤 Отправлено gameState игроку ${idx} с ${stateWithHand.hand.length} карт`);
+                    }
+                });
+
+                console.log('📊 Состояние с руками отправлено всем игрокам');
             }, 3000);
+
 
             // ✅ Возвращаем состояние но не очищаем стол сразу
             return { success: true, gameState: gameState, trickEnded: true };
@@ -699,7 +708,6 @@ class OnlineGame {
         this.players.forEach(p => {
             let points = 0;
 
-            // 😈 МИЗЕР
             if (mode === GameMode.MISER) {
                 if (p.tricks === 0) {
                     points = 20 * multiplier;
@@ -708,9 +716,7 @@ class OnlineGame {
                     points = -10 * p.tricks * multiplier;
                     console.log(`😞 ${p.name}: Мизер провален (${p.tricks} взяток) ${points}`);
                 }
-            }
-            // 🎯 ОБЫЧНЫЕ РЕЖИМЫ
-            else {
+            } else {
                 if (p.tricks === p.bid) {
                     points = 10 * p.bid * multiplier;
                     if (p.bid === 0) points = 5 * multiplier;
@@ -727,7 +733,6 @@ class OnlineGame {
 
         this.modeRoundCount++;
 
-        // ✅ ПРОВЕРКА ЗАВЕРШЕНИЯ РЕЖИМА
         if (this.modeRoundCount >= this.actualRounds) {
             if (this.currentModeIdx < CAMPAIGN_MODES.length - 1) {
                 this.currentModeIdx++;
@@ -754,8 +759,16 @@ class OnlineGame {
         // ✅ ЗАПУСКАЕМ СЛЕДУЮЩИЙ РАУНД
         this.startRound();
 
-        // ✅ ОТПРАВЛЯЕМ ОБНОВЛЁННОЕ СОСТОЯНИЕ
-        io.to(this.roomId).emit('roundStarted', this.getGameState());
+        // ✅ ОТПРАВЛЯЕМ СОСТОЯНИЕ КАЖДОМУ ИГРОКУ С ЕГО РУКОЙ
+        this.players.forEach((player, idx) => {
+            const socket = this.players[idx].socketId;
+            if (socket) {
+                const stateWithHand = this.getGameStateWithHand(idx);
+                io.to(socket).emit('gameState', stateWithHand);
+            }
+        });
+
+        console.log('🎴 Состояние отправлено всем игрокам с руками');
 
         return { success: true, gameState: this.getGameState() };
     }
@@ -795,13 +808,19 @@ class OnlineGame {
     getGameStateWithHand(playerIdx) {
         const state = this.getGameState();
         state.hand = this.getPlayerHand(playerIdx);
+        console.log(`📤 Отправляем состояние игроку ${playerIdx}: ${state.hand.length} карт`);
         return state;
     }
 
     getPlayerHand(playerIdx) {
         const player = this.players[playerIdx];
-        if (!player) return [];
-        return player.hand.map(card => card.toJSON());
+        if (!player) {
+            console.log(`❌ Игрок ${playerIdx} не найден`);
+            return [];
+        }
+        const hand = player.hand.map(card => card.toJSON());
+        console.log(`🃏 Рука игрока ${playerIdx}:`, hand.map(c => c.rank + c.suit));
+        return hand;
     }
 }
 
@@ -835,14 +854,6 @@ io.on('connection', (socket) => {
             socket.join(roomId);
             socket.emit('roomJoined', { roomId, playerIdx: result.playerIdx });
             io.to(roomId).emit('playerJoined', room.getGameState());
-
-            // ✅ Сбрасываем таймер закрытия если игрок вернулся
-            if (roomTimers[roomId]) {
-                clearTimeout(roomTimers[roomId]);
-                delete roomTimers[roomId];
-                console.log(`⏱️ Таймер закрытия комнаты ${roomId} сброшен`);
-            }
-
             console.log(`👥 Игрок ${playerName} присоединился к ${roomId}`);
         } else {
             socket.emit('error', result.error);
