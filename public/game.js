@@ -315,7 +315,6 @@ class OnlinePokerGame {
 
         modeBar.textContent = `${this.gameState.mode}`;
 
-        // ✅ Добавляем класс для Мизера
         modeBar.className = 'mode-bar';
         turnBar.className = 'turn-bar';
 
@@ -324,8 +323,7 @@ class OnlinePokerGame {
             turnBar.classList.add('miser');
         }
 
-        // ✅ Показываем правильное количество раундов (6 или 11)
-        const maxRounds = this.gameState.maxRounds;
+        const maxRounds = this.gameState.maxRounds || 11;
         infoBar.innerHTML = `
         <span>🎲 ${this.gameState.roundNumber}/${maxRounds}</span>
         <span>|</span>
@@ -343,7 +341,7 @@ class OnlinePokerGame {
         } else if (this.gameState.gameState === 'playing') {
             const currentPlayerIdx = this.getCurrentPlayerIdx();
             const currentPlayer = this.gameState.players[currentPlayerIdx];
-            document.getElementById('turnBar').textContent = currentPlayer ? `🎴 ${currentPlayer.name}` : '🎴 ...';
+            document.getElementById('turnBar').textContent = currentPlayer ? `🎴 ${currentPlayer.name}` : '🎴 Ход: ...';
         } else {
             document.getElementById('turnBar').textContent = '';
         }
@@ -495,6 +493,7 @@ class OnlinePokerGame {
         });
     }
 
+    // ✅ МЕТОД: Создание элемента карты
     createCardElement(card, isMini = false, isOnTable = false) {
         const cardDiv = document.createElement('div');
         const cardClass = card.isSixSpades ? 'joker' :
@@ -510,16 +509,16 @@ class OnlinePokerGame {
             const suit = card.isSixSpades ? '🃏' : card.suit;
 
             cardDiv.innerHTML = `
-                <div class="card-corner card-corner-top">
-                    <span class="card-rank">${rank}</span>
-                    <span class="card-suit-small">${suit}</span>
-                </div>
-                <div class="card-center">${suit}</div>
-                <div class="card-corner card-corner-bottom">
-                    <span class="card-rank">${rank}</span>
-                    <span class="card-suit-small">${suit}</span>
-                </div>
-            `;
+            <div class="card-corner card-corner-top">
+                <span class="card-rank">${rank}</span>
+                <span class="card-suit-small">${suit}</span>
+            </div>
+            <div class="card-center">${suit}</div>
+            <div class="card-corner card-corner-bottom">
+                <span class="card-rank">${rank}</span>
+                <span class="card-suit-small">${suit}</span>
+            </div>
+        `;
         } else {
             cardDiv.className = `card ${cardClass}`;
 
@@ -527,16 +526,16 @@ class OnlinePokerGame {
             const suit = card.isSixSpades ? '🃏' : card.suit;
 
             cardDiv.innerHTML = `
-                <div class="card-corner card-corner-top">
-                    <span class="card-rank">${rank}</span>
-                    <span class="card-suit-small">${suit}</span>
-                </div>
-                <div class="card-center">${suit}</div>
-                <div class="card-corner card-corner-bottom">
-                    <span class="card-rank">${rank}</span>
-                    <span class="card-suit-small">${suit}</span>
-                </div>
-            `;
+            <div class="card-corner card-corner-top">
+                <span class="card-rank">${rank}</span>
+                <span class="card-suit-small">${suit}</span>
+            </div>
+            <div class="card-center">${suit}</div>
+            <div class="card-corner card-corner-bottom">
+                <span class="card-rank">${rank}</span>
+                <span class="card-suit-small">${suit}</span>
+            </div>
+        `;
         }
 
         return cardDiv;
@@ -603,7 +602,10 @@ class OnlinePokerGame {
             return;
         }
 
-        const isBlind = this.gameState.mode.includes('Слепая');
+        const mode = this.gameState.mode;
+        const isBlind = mode.includes('Слепая');
+        const isBidding = this.gameState.gameState === 'bidding';
+        const isMyTurn = this.gameState.currentPlayer === this.playerIdx;
 
         if (isBlind && this.myHand && this.myHand.length > 0) {
             const msgDiv = document.createElement('div');
@@ -612,9 +614,14 @@ class OnlinePokerGame {
             area.appendChild(msgDiv);
         }
 
-        if (this.gameState.gameState === 'bidding' && this.gameState.currentPlayer === this.playerIdx) {
+        // ✅ ПОКАЗЫВАЕМ ТОРГОВЛЮ (ТОЛЬКО КЛАССИКА, БЕСКОЗЫРКА, СЛЕПАЯ)
+        if (isBidding && isMyTurn) {
             this.showBiddingInterface(area);
-        } else if (this.gameState.gameState === 'playing') {
+            return;
+        }
+
+        // ✅ ПОКАЗЫВАЕМ ИНТЕРФЕЙС ИГРЫ
+        if (this.gameState.gameState === 'playing') {
             const currentPlayerIdx = this.getCurrentPlayerIdx();
             if (currentPlayerIdx === this.playerIdx) {
                 this.showPlayHints(area);
@@ -625,13 +632,24 @@ class OnlinePokerGame {
                 msg.textContent = `⏳ ${currentPlayer?.name || '...'} ходит...`;
                 area.appendChild(msg);
             }
-        } else if (this.gameState.gameState === 'bidding') {
+            return;
+        }
+
+        // ✅ ОЖИДАНИЕ ТОРГОВЛИ
+        if (isBidding) {
             const msg = document.createElement('div');
             msg.className = 'message';
             const currentPlayer = this.gameState.players[this.gameState.currentPlayer];
             msg.textContent = `⏳ ${currentPlayer?.name || '...'} делает заявку...`;
             area.appendChild(msg);
+            return;
         }
+
+        // ✅ ПО УМОЛЧАНИЮ (БЕЗ ТОРГОВЛИ)
+        const msg = document.createElement('div');
+        msg.className = 'message success';
+        msg.textContent = `🎴 РОЗЫГРЫШ! Следите за ходом...`;
+        area.appendChild(msg);
     }
 
     showBiddingInterface(area) {
@@ -691,9 +709,13 @@ class OnlinePokerGame {
         const mode = this.gameState.mode;
         let ruleText = '🎴 ПЕРВЫЙ ХОД — ЛЮБАЯ КАРТА!';
 
-        // ✅ СПЕЦИАЛЬНАЯ ПОДСКАЗКА ДЛЯ МИЗЕРА
+        // ✅ СПЕЦИАЛЬНЫЕ ПОДСКАЗКИ ДЛЯ РЕЖИМОВ
         if (mode === '😈 Мизер') {
             ruleText = '😈 МИЗЕР! Старайтесь НЕ брать взятки!';
+        } else if (mode === '🔥 Хапки') {
+            ruleText = '🔥 ХАПКИ! Берите как можно больше взяток!';
+        } else if (mode === '💰 Золотая') {
+            ruleText = '💰 ЗОЛОТАЯ! Очки удвоены!';
         }
 
         const cardsOnTableCount = this.gameState.cardsOnTable ? this.gameState.cardsOnTable.length : 0;

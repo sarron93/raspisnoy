@@ -23,12 +23,51 @@ const VALUES = { '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K'
 
 
 const GameMode = {
-    CLASSIC: { name: '🎯 Классика', fullDeck: false },  // 6 раундов (1→2→3→4→5→6)
-    MISER: { name: '😈 Мизер', fullDeck: true },        // ✅ 11 раундов (вся колода)
-    NO_TRUMP: { name: '🃏 Бескозырка', fullDeck: true }, // ✅ 11 раундов (вся колода)
-    GOLDEN: { name: '💰 Золотая', fullDeck: true },      // ✅ 11 раундов (вся колода)
-    BLIND: { name: '👁️ Слепая', fullDeck: true },        // ✅ 11 раундов (вся колода)
-    KHAPKI: { name: '🔥 Хапки', fullDeck: true }         // ✅ 11 раундов (вся колода)
+    CLASSIC: {
+        name: '🎯 Классика',
+        fullDeck: false,
+        fixedRounds: 11,
+        cardPattern: 'ascending_descending',
+        hasBidding: true  // ✅ ТОРГОВЛЯ ЕСТЬ
+    },
+    MISER: {
+        name: '😈 Мизер',
+        fullDeck: true,
+        fixedRounds: null,
+        cardPattern: 'equal_distribution',
+        hasBidding: false,  // ❌ НЕТ ТОРГОВЛИ
+        autoBid: 0
+    },
+    NO_TRUMP: {
+        name: '🃏 Бескозырка',
+        fullDeck: true,
+        fixedRounds: null,
+        cardPattern: 'equal_distribution',
+        hasBidding: true  // ✅ ТОРГОВЛЯ ЕСТЬ
+    },
+    GOLDEN: {
+        name: '💰 Золотая',
+        fullDeck: true,
+        fixedRounds: null,
+        cardPattern: 'equal_distribution',
+        hasBidding: false,  // ❌ НЕТ ТОРГОВЛИ
+        autoBid: null
+    },
+    BLIND: {
+        name: '👁️ Слепая',
+        fullDeck: true,
+        fixedRounds: null,
+        cardPattern: 'equal_distribution',
+        hasBidding: true  // ✅ ТОРГОВЛЯ ЕСТЬ
+    },
+    KHAPKI: {
+        name: '🔥 Хапки',
+        fullDeck: true,
+        fixedRounds: null,
+        cardPattern: 'equal_distribution',
+        hasBidding: false,  // ❌ НЕТ ТОРГОВЛИ
+        autoBid: null
+    }
 };
 
 const CAMPAIGN_MODES = [
@@ -39,6 +78,8 @@ const CAMPAIGN_MODES = [
     GameMode.BLIND,
     GameMode.KHAPKI
 ];
+
+const TOTAL_CARDS = 36;
 
 class Card {
     constructor(suit, rank, isSixSpades = false) {
@@ -256,6 +297,35 @@ class OnlineGame {
         this.cardsPlayedThisTrick = [];
         this.leadSuit = null;
         this.deck = null;
+        this.actualRounds = 0;
+    }
+
+    // ✅ АВТОМАТИЧЕСКОЕ НАЗНАЧЕНИЕ ЗАЯВОК
+    // ✅ АВТОМАТИЧЕСКОЕ НАЗНАЧЕНИЕ ЗАЯВОК (для режимов без торговли)
+    autoAssignBids() {
+        const mode = this.getCurrentMode();
+
+        this.players.forEach(p => {
+            if (mode.autoBid === 0) {
+                // 😈 МИЗЕР — все обязаны 0
+                p.bid = 0;
+            } else if (mode.autoBid === null) {
+                // 💰🔥 ЗОЛОТАЯ, ХАПКИ — случайная заявка от 0 до cardsPerRound
+                p.bid = Math.floor(Math.random() * (this.cardsPerRound + 1));
+            } else {
+                p.bid = mode.autoBid;
+            }
+            p.hasBid = true;
+            console.log(`📢 ${p.name}: авто-заявка ${p.bid}`);
+        });
+
+        // ✅ СРАЗУ ПЕРЕХОДИМ К РОЗЫГРЫШУ
+        this.trickLeaderIdx = (this.dealerIdx + 1) % this.players.length;
+        this.cardsPlayedThisTrick = [];
+        this.leadSuit = null;
+        this.currentTrick = 0;
+
+        console.log('🎴 Переход к розыгрышу (без торговли)');
     }
 
     addPlayer(socketId, name) {
@@ -294,15 +364,51 @@ class OnlineGame {
     }
 
     getMaxRounds() {
-        // ✅ Если режим с полной колодой — 11 раундов
-        // ✅ Если классика — 6 раундов
-        return this.getCurrentMode().fullDeck ? 11 : 6;
+        const mode = this.getCurrentMode();
+
+        // ✅ КЛАССИКА — всегда 11 раундов
+        if (mode === GameMode.CLASSIC) {
+            return 11;
+        }
+
+        // ✅ ОСТАЛЬНЫЕ РЕЖИМЫ — количество раундов = количеству игроков
+        const playerCount = this.players.length;
+
+        // ✅ Минимум 2 игрока, максимум 4
+        if (playerCount < 2) return 2;
+        if (playerCount > 4) return 4;
+
+        return playerCount;
+    }
+
+    getCardsPerRound(roundNumber) {
+        const mode = this.getCurrentMode();
+        const playerCount = this.players.length;
+
+        // ✅ КЛАССИКА — паттерн 1→2→3→4→5→6→5→4→3→2→1
+        if (mode === GameMode.CLASSIC) {
+            if (roundNumber < 6) {
+                return roundNumber + 1;  // 1, 2, 3, 4, 5, 6
+            } else {
+                return 11 - roundNumber;  // 5, 4, 3, 2, 1
+            }
+        }
+
+        // ✅ ОСТАЛЬНЫЕ РЕЖИМЫ — 36 карт / количество игроков
+        // Пример: 2 игрока = 18 карт на раунд, 2 раунда
+        //         3 игрока = 12 карт на раунд, 3 раунда
+        //         4 игрока = 9 карт на раунд, 4 раунда
+        return Math.floor(TOTAL_CARDS / playerCount);
     }
 
     startGame() {
         if (this.players.length < 2) {
             return { success: false, error: 'Нужно минимум 2 игрока' };
         }
+
+        // ✅ РАСЧЁТ ФАКТИЧЕСКОГО КОЛИЧЕСТВА РАУНДОВ
+        this.actualRounds = this.getMaxRounds();
+        this.modeRoundCount = 0;
 
         this.gameState = 'playing';
         this.startRound();
@@ -317,6 +423,15 @@ class OnlineGame {
         this.trickLeaderIdx = (this.dealerIdx + 1) % this.players.length;
 
         this.deck = new Deck();
+
+        this.cardsPerRound = this.getCardsPerRound(this.modeRoundCount);
+
+        const totalCardsNeeded = this.cardsPerRound * this.players.length;
+        if (totalCardsNeeded > TOTAL_CARDS) {
+            console.error(`❌ Не хватает карт! Нужно ${totalCardsNeeded}, есть ${TOTAL_CARDS}`);
+            this.cardsPerRound = Math.floor(TOTAL_CARDS / this.players.length);
+        }
+
         this.players.forEach(p => {
             p.hand = this.deck.deal(this.cardsPerRound);
             p.bid = -1;
@@ -342,14 +457,30 @@ class OnlineGame {
             this.biddingOrder.push((this.dealerIdx + 1 + i) % this.players.length);
         }
         this.currentPlayerIdx = 0;
-        this.gameState = 'bidding';
 
-        console.log(`🎴 Новый раунд: ${this.cardsPerRound} карт, козырь: ${this.trumpSuit || 'нет'}`);
+        // ✅ ПРОВЕРКА: ЕСТЬ ЛИ ТОРГОВЛЯ В ЭТОМ РЕЖИМЕ
+        if (mode.hasBidding) {
+            this.gameState = 'bidding';
+            console.log(`🎴 Раунд ${this.modeRoundCount + 1}/${this.actualRounds}: ${this.cardsPerRound} карт, козырь: ${this.trumpSuit || 'нет'} (ТОРГОВЛЯ)`);
+        } else {
+            // ✅ АВТОМАТИЧЕСКИ НАЗНАЧАЕМ ЗАЯВКИ
+            this.autoAssignBids();
+            this.gameState = 'playing';
+            console.log(`🎴 Раунд ${this.modeRoundCount + 1}/${this.actualRounds}: ${this.cardsPerRound} карт, козырь: ${this.trumpSuit || 'нет'} (БЕЗ ТОРГОВЛИ)`);
+        }
+
         return this.getGameState();
     }
 
     makeBid(playerIdx, bid) {
         const player = this.players[playerIdx];
+        const mode = this.getCurrentMode();
+
+        // ✅ ПРОВЕРКА: ЕСТЬ ЛИ ТОРГОВЛЯ В ЭТОМ РЕЖИМЕ
+        if (!mode.hasBidding) {
+            return { success: false, error: 'В этом режиме торговля отключена' };
+        }
+
         if (!player || player.hasBid) {
             return { success: false, error: 'Невозможно сделать заявку' };
         }
@@ -546,7 +677,7 @@ class OnlineGame {
         this.players.forEach(p => {
             let points = 0;
 
-            // 😈 РЕЖИМ МИЗЕР
+            // 😈 МИЗЕР
             if (mode === GameMode.MISER) {
                 if (p.tricks === 0) {
                     points = 20 * multiplier;
@@ -573,34 +704,21 @@ class OnlineGame {
         });
 
         this.modeRoundCount++;
-        const maxRounds = this.getMaxRounds();
-
-        // ✅ РАСЧЁТ КОЛИЧЕСТВА КАРТ ДЛЯ СЛЕДУЮЩЕГО РАУНДА
-        if (this.modeRoundCount < maxRounds) {
-            if (this.modeRoundCount < 6) {
-                // 🔼 Восходящая часть: 1→2→3→4→5→6
-                this.cardsPerRound = this.modeRoundCount + 1;
-            } else {
-                // 🔽 Нисходящая часть: 5→4→3→2→1
-                this.cardsPerRound = maxRounds - this.modeRoundCount;
-            }
-            console.log(`🎴 Следующий раунд: ${this.cardsPerRound} карт (раунд ${this.modeRoundCount + 1}/${maxRounds})`);
-        }
 
         // ✅ ПРОВЕРКА ЗАВЕРШЕНИЯ РЕЖИМА
-        if (this.modeRoundCount >= maxRounds) {
+        if (this.modeRoundCount >= this.actualRounds) {
             if (this.currentModeIdx < CAMPAIGN_MODES.length - 1) {
                 this.currentModeIdx++;
                 this.modeRoundCount = 0;
-                this.cardsPerRound = 1;
+                this.actualRounds = this.getMaxRounds();  // ✅ Пересчёт для нового режима
 
-                // ✅ Сброс истории колоды для нового режима
+                // ✅ Сброс истории колоды
                 if (this.deck) {
                     this.deck.dealtHistory = [];
                     console.log('🔄 Баланс колоды сброшен для нового режима');
                 }
 
-                console.log(`🎉 Смена режима: ${this.getCurrentMode().name}`);
+                console.log(`🎉 Смена режима: ${this.getCurrentMode().name} (${this.actualRounds} раундов)`);
             } else {
                 this.gameState = 'finished';
                 console.log('🏆 Кампания завершена!');
@@ -636,7 +754,7 @@ class OnlineGame {
             trumpSuit: this.trumpSuit,
             mode: this.getCurrentMode().name,
             roundNumber: this.modeRoundCount + 1,
-            maxRounds: this.getMaxRounds(),
+            maxRounds: this.actualRounds,  // ✅ Фактическое количество раундов
             modeIdx: this.currentModeIdx + 1,
             totalModes: CAMPAIGN_MODES.length,
             cardsOnTable: this.cardsPlayedThisTrick.map(({ playerIdx, card }) => ({
