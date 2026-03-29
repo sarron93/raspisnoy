@@ -101,6 +101,7 @@
     border: 2px solid rgba(233, 69, 96, 0.5);
     padding: var(--spacing-md) var(--spacing-lg);
     border-radius: var(--border-radius-lg);
+    margin: var(--spacing-md) 0;
     text-align: center;
     font-weight: 600;
     font-size: 0.95rem;
@@ -460,5 +461,173 @@
 @keyframes trophyBounce {
     0%, 100% { transform: translateY(0) rotate(-5deg); }
     50% { transform: translateY(-10px) rotate(5deg); }
+}
+
+/* 🃏 МОДАЛЬНОЕ ОКНО ВЫБОРА ДЖОКЕРА */
+.joker-choice-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.9);
+    opacity: 0;
+    background: linear-gradient(145deg, rgba(26, 26, 62, 0.98), rgba(15, 15, 46, 0.98));
+    border: 4px solid rgba(255, 215, 0, 0.6);
+    border-radius: 24px;
+    padding: 30px 40px;
+    text-align: center;
+    z-index: 2000;
+    box-shadow: 0 0 60px rgba(255, 215, 0, 0.5), 0 0 100px rgba(233, 69, 96, 0.4);
+    backdrop-filter: blur(20px);
+    min-width: 380px;
+    transition: var(--transition);
+}
+
+.joker-modal-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+
+.joker-card {
+    width: 80px;
+    height: 120px;
+    background: linear-gradient(135deg, #e94560, #ff6b6b);
+    border: 4px solid var(--accent);
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 3rem;
+    font-weight: 800;
+    color: white;
+    box-shadow: 0 10px 40px rgba(233, 69, 96, 0.6);
+    animation: jokerPulse 1.5s infinite alternate;
+}
+
+@keyframes jokerPulse {
+    from { box-shadow: 0 10px 40px rgba(233, 69, 96, 0.6); transform: scale(1); }
+    to { box-shadow: 0 10px 60px rgba(255, 215, 0, 0.8), 0 0 80px rgba(233, 69, 96, 0.6); transform: scale(1.05); }
+}
+
+.joker-title {
+    font-size: 1.8rem;
+    color: var(--accent);
+    font-weight: 800;
+    text-shadow: 0 0 20px rgba(255, 215, 0, 0.6);
+}
+
+.joker-question {
+    font-size: 1.2rem;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+}
+
+.joker-options {
+    display: flex;
+    gap: 15px;
+    width: 100%;
+}
+
+.joker-btn {
+    flex: 1;
+    padding: 15px 10px;
+    background: linear-gradient(145deg, rgba(42, 42, 94, 0.9), rgba(26, 26, 62, 0.9));
+    border: 2px solid rgba(78, 204, 163, 0.5);
+    border-radius: 14px;
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    color: white;
+}
+
+.joker-btn:hover {
+    transform: translateY(-3px);
+    border-color: var(--secondary);
+    box-shadow: 0 8px 25px rgba(78, 204, 163, 0.4);
+}
+
+.joker-btn.joker-high:hover {
+    background: linear-gradient(145deg, rgba(78, 204, 163, 0.3), rgba(42, 42, 94, 0.9));
+}
+
+.joker-btn.joker-low:hover {
+    background: linear-gradient(145deg, rgba(233, 69, 96, 0.3), rgba(42, 42, 94, 0.9));
+}
+
+.joker-icon { font-size: 1.5rem; }
+.joker-text { font-size: 1rem; font-weight: 700; }
+.joker-desc { font-size: 0.8rem; color: var(--text-muted); opacity: 0.9; }
+.joker-info {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    width: 100%;
+}
+
+/* 🎨 ВЫБОР МАСТИ ДЛЯ ДЖОКЕРА-ЛИДЕРА */
+.joker-suit-selection {
+    width: 100%;
+    margin: 15px 0;
+    padding: 15px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 14px;
+    border: 1px solid rgba(255, 215, 0, 0.3);
+}
+
+.joker-suit-title {
+    font-size: 1rem;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    text-align: center;
+    font-weight: 600;
+}
+
+.joker-suits {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+.joker-suit-btn {
+    width: 50px;
+    height: 50px;
+    background: linear-gradient(145deg, rgba(42, 42, 94, 0.9), rgba(26, 26, 62, 0.9));
+    border: 2px solid rgba(78, 204, 163, 0.5);
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 1.8rem;
+    font-weight: 800;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+
+.joker-suit-btn:hover {
+    transform: translateY(-3px) scale(1.1);
+    border-color: var(--secondary);
+    box-shadow: 0 8px 25px rgba(78, 204, 163, 0.4);
+}
+
+.joker-suit-btn.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.5), 0 8px 25px rgba(255, 215, 0, 0.3);
+    background: linear-gradient(145deg, rgba(255, 215, 0, 0.3), rgba(42, 42, 94, 0.9));
+}
+
+.joker-suit-btn[data-suit="♥"],
+.joker-suit-btn[data-suit="♦"] {
+    color: var(--primary);
+}
+
+.joker-suit-btn[data-suit="♠"],
+.joker-suit-btn[data-suit="♣"] {
+    color: var(--text);
 }
 
