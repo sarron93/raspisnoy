@@ -122,8 +122,14 @@ class OnlinePokerGame {
             } else if (state.trickEnded) {
                 // ✅ Взятка завершена — карты остаются на столе 3 секунды
                 this.gameState = state;
+                // ✅ НЕ обновляем myHand здесь, ждём gameState с рукой
                 this.updateGameDisplay();
                 // ✅ Ждём trickCleared для очистки стола
+            } else if (state.waitingForJokerChoice) {
+                // ✅ Джокер сыгран — ждём выбора
+                this.gameState = state;
+                // ✅ НЕ обновляем myHand, ждём gameState с рукой
+                this.updateGameDisplay();
             } else {
                 // ✅ Обычный ход
                 this.gameState = state;
@@ -230,6 +236,18 @@ class OnlinePokerGame {
             this.isProcessing = false;
             this.updateGameDisplay();
         });
+
+        // ✅ ОБРАБОТЧИК: Джокер сыгран — нужно выбрать силу
+        this.socket.on('jokerPlayed', ({ playerIdx, playerName, card, trickNumber }) => {
+            console.log('🃏 Джокер сыгран:', playerName, card);
+
+            if (playerIdx === this.playerIdx) {
+                this.showJokerChoiceModal(card, trickNumber);
+            } else {
+                // ✅ Не блокируем интерфейс полностью, просто показываем статус
+                this.updateStatus(`⏳ ${playerName} выбирает силу джокера...`, 'warning');
+            }
+        });
     }
 
     // ✅ МЕТОД: Показ уведомления о завершении раунда
@@ -333,10 +351,15 @@ class OnlinePokerGame {
         this.wasInGame = false;
     }
 
-    createRoom() {
+    createRoom(testMode = true) {
         const playerName = document.getElementById('playerName').value.trim();
         if (!playerName) { alert('Введите ваше имя!'); return; }
-        this.socket.emit('createRoom', { playerName, maxPlayers: 4 });
+
+        this.socket.emit('createRoom', {
+            playerName,
+            maxPlayers: 4,
+            testMode: testMode  // ✅ Передаём флаг
+        });
     }
 
     joinRoom() {
@@ -419,6 +442,8 @@ class OnlinePokerGame {
         const turnBar = document.getElementById('turnBar');
         const infoBar = document.getElementById('infoBar');
 
+        modeBar.textContent = `${this.gameState.mode}${this.gameState.testMode ? ' 🧪' : ''}`;
+
         modeBar.textContent = `${this.gameState.mode}`;
 
         modeBar.className = 'mode-bar';
@@ -436,6 +461,7 @@ class OnlinePokerGame {
         <span>🃏 ${this.gameState.cardsPerRound}</span>
         <span>|</span>
         <span>${this.gameState.trumpSuit ? `🂡 ${this.gameState.trumpSuit}` : '🚫'}</span>
+        ${this.gameState.testMode ? '<span style="color: var(--accent);">🧪 ТЕСТ</span>' : ''}
     `;
 
         document.getElementById('progressBar').textContent =
@@ -717,6 +743,15 @@ class OnlinePokerGame {
         const area = document.getElementById('controlArea');
         area.innerHTML = '';
 
+        // ✅ Если ждём выбор джокера — показываем статус
+        if (this.gameState.waitingForJokerChoice) {
+            const msg = document.createElement('div');
+            msg.className = 'message warning';
+            msg.textContent = '🃏 Ожидание выбора силы джокера...';
+            area.appendChild(msg);
+            return;
+        }
+
         if (this.gameState.gameState === 'finished') {
             this.showResults();
             return;
@@ -911,6 +946,70 @@ class OnlinePokerGame {
             div.innerHTML = `<span style="font-size: 1.3em;">${medal}</span> ${idx + 1}. ${player.name} — <strong style="color: #4ecca3;">${player.score}</strong> очков`;
             leaderboard.appendChild(div);
         });
+    }
+
+    // ✅ МЕТОД: Показать модальное окно выбора силы джокера
+    showJokerChoiceModal(card, trickNumber) {
+        this.isProcessing = true;
+
+        const modal = document.createElement('div');
+        modal.className = 'joker-choice-modal';
+        modal.id = 'jokerChoiceModal';
+
+        modal.innerHTML = `
+        <div class="joker-modal-content">
+            <div class="joker-card joker">6♠🃏</div>
+            <div class="joker-title">🃏 Джокер!</div>
+            <div class="joker-question">Как использовать?</div>
+            
+            <div class="joker-options">
+                <button class="joker-btn joker-high" id="jokerHigh">
+                    <span class="joker-icon">⬆️</span>
+                    <span class="joker-text">Старшая карта</span>
+                    <span class="joker-desc">Выиграть взятку</span>
+                </button>
+                <button class="joker-btn joker-low" id="jokerLow">
+                    <span class="joker-icon">⬇️</span>
+                    <span class="joker-text">Младшая карта</span>
+                    <span class="joker-desc">Проиграть взятку</span>
+                </button>
+            </div>
+            
+            <div class="joker-info">Взятка #${trickNumber}</div>
+        </div>
+    `;
+
+        document.body.appendChild(modal);
+
+        document.getElementById('jokerHigh').onclick = () => {
+            this.sendJokerChoice('high');
+            modal.remove();
+        };
+
+        document.getElementById('jokerLow').onclick = () => {
+            this.sendJokerChoice('low');
+            modal.remove();
+        };
+
+        setTimeout(() => {
+            modal.style.opacity = '1';
+            modal.style.transform = 'translate(-50%, -50%) scale(1)';
+        }, 10);
+    }
+
+    // ✅ МЕТОД: Отправить выбор силы джокера
+    sendJokerChoice(choice) {
+        console.log('🃏 Отправка выбора джокера:', choice);
+
+        this.socket.emit('jokerChoice', {
+            roomId: this.roomId,
+            playerIdx: this.playerIdx,
+            choice: choice
+        });
+
+        setTimeout(() => {
+            this.isProcessing = false;
+        }, 500);
     }
 }
 

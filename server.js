@@ -87,6 +87,7 @@ class Card {
         this.rank = rank;
         this.isSixSpades = isSixSpades;
         this.value = VALUES[rank] || 100;
+        this.jokerPower = null;  // ✅ 'high' | 'low' | null
     }
 
     toJSON() {
@@ -94,7 +95,8 @@ class Card {
             suit: this.suit,
             rank: this.rank,
             isSixSpades: this.isSixSpades,
-            value: this.value
+            value: this.value,
+            jokerPower: this.jokerPower  // ✅ Добавлено
         };
     }
 }
@@ -298,6 +300,10 @@ class OnlineGame {
         this.leadSuit = null;
         this.deck = null;
         this.actualRounds = 0;
+        // ✅ НОВЫЕ ПОЛЯ ДЛЯ ДЖОКЕРА
+        this.jokerChoices = {};  // { playerIdx: 'high' | 'low' }
+        this.pendingJoker = null;  // { playerIdx, cardIdx, trickCards }
+        this.testMode = false;
     }
 
     // ✅ АВТОМАТИЧЕСКОЕ НАЗНАЧЕНИЕ ЗАЯВОК
@@ -440,6 +446,9 @@ class OnlineGame {
             console.log(`🃏 ${p.name} получил ${p.hand.length} карт`);  // ✅ ЛОГ
         });
 
+        // ✅ ГАРАНТИРУЕМ ДЖОКЕР В ТЕСТ-РЕЖИМЕ
+        this.ensureJokerInDeal();
+
         if (mode !== GameMode.NO_TRUMP && this.deck.size() > 0) {
             this.trumpCard = this.deck.cards[Math.floor(Math.random() * this.deck.size())];
             if (this.trumpCard.suit === '♠') {
@@ -532,70 +541,107 @@ class OnlineGame {
         this.cardsPlayedThisTrick.push({ playerIdx, card });
         console.log(`🃏 Игрок ${playerIdx} сыграл ${card.rank}${card.suit}, карт на столе: ${this.cardsPlayedThisTrick.length}`);
 
+        // ✅ ЕСЛИ СЫГРАН ДЖОКЕР — ЗАПРОСИТЬ ВЫБОР СИЛЫ
+        if (card.isSixSpades) {
+            console.log(`🃏 Джокер сыгран игроком ${playerIdx} — ожидание выбора силы`);
+
+            // ✅ Сохраняем состояние для ожидания выбора
+            this.pendingJoker = {
+                playerIdx: playerIdx,
+                card: card
+            };
+
+            // ✅ Отправляем событие для выбора
+            io.to(this.roomId).emit('jokerPlayed', {
+                playerIdx: playerIdx,
+                playerName: player.name,
+                card: card.toJSON(),
+                trickNumber: this.currentTrick + 1
+            });
+
+            // ✅ ОТПРАВЛЯЕМ СОСТОЯНИЕ С РУКАМИ ВСЕМ ИГРОКАМ (чтобы руки не пропали)
+            this.players.forEach((player, idx) => {
+                const socket = this.players[idx].socketId;
+                if (socket) {
+                    const stateWithHand = this.getGameStateWithHand(idx);
+                    io.to(socket).emit('gameState', stateWithHand);
+                    console.log(`📤 Отправлено gameState игроку ${idx} с ${stateWithHand.hand.length} карт`);
+                }
+            });
+
+            // ✅ Возвращаем состояние но НЕ завершаем взятку — ждём выбор и остальные ходы
+            return {
+                success: true,
+                gameState: this.getGameState(),
+                waitingForJokerChoice: true
+            };
+        }
+
         // ✅ ЕСЛИ ВСЕ ПОХОДИЛИ — ОПРЕДЕЛЯЕМ ПОБЕДИТЕЛЯ
         if (this.cardsPlayedThisTrick.length >= this.players.length) {
-            const winner = this.determineTrickWinner();
-            const winningCard = this.cardsPlayedThisTrick[winner].card;
-
-            this.players[winner].tricks++;
-            this.trickLeaderIdx = winner;
-            this.currentTrick++;
-
-            console.log(`🏆 Взятку выиграл игрок ${winner} (${this.players[winner].name}) с картой ${winningCard.rank}${winningCard.suit}`);
-            console.log(`📊 Всего взяток: ${this.currentTrick}/${this.cardsPerRound}`);
-
-            // ✅ ОТПРАВЛЯЕМ СОСТОЯНИЕ С КАРТАМИ НА СТОЛЕ
-            const gameState = this.getGameState();
-            io.to(this.roomId).emit('cardPlayed', gameState);
-
-            // ✅ ПРОВЕРЯЕМ ЗАВЕРШЕНИЕ РАУНДА
-            if (this.currentTrick >= this.cardsPerRound) {
-                console.log('🎯 Раунд завершен');
-
-                // ✅ ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ О ЗАВЕРШЕНИИ РАУНДА
-                io.to(this.roomId).emit('roundFinished', {
-                    roundNumber: this.modeRoundCount + 1,
-                    totalRounds: this.actualRounds,
-                    playersScores: this.players.map(p => ({
-                        name: p.name,
-                        tricks: p.tricks,
-                        bid: p.bid
-                    }))
-                });
-
-                // ✅ ПАУЗА 5 СЕКУНД ПЕРЕД СЛЕДУЮЩИМ РАУНДОМ
-                setTimeout(() => {
-                    return this.endRound();
-                }, 5000);
-
-                return { success: true, gameState: gameState, roundEnded: true };
-            }
-
-            // ✅ ПАУЗА 3 СЕКУНДЫ ПЕРЕД СБРОСОМ КАРТ
-            setTimeout(() => {
-                this.cardsPlayedThisTrick = [];
-                this.leadSuit = null;
-                console.log('🎴 Взятка завершена, сброс leadSuit');
-
-                // ✅ ОТПРАВЛЯЕМ СОСТОЯНИЕ КАЖДОМУ ИГРОКУ С ЕГО РУКОЙ
-                this.players.forEach((player, idx) => {
-                    const socket = this.players[idx].socketId;
-                    if (socket) {
-                        const stateWithHand = this.getGameStateWithHand(idx);
-                        io.to(socket).emit('gameState', stateWithHand);
-                        console.log(`📤 Отправлено gameState игроку ${idx} с ${stateWithHand.hand.length} карт`);
-                    }
-                });
-
-                console.log('📊 Состояние с руками отправлено всем игрокам');
-            }, 3000);
-
-
-            // ✅ Возвращаем состояние но не очищаем стол сразу
-            return { success: true, gameState: gameState, trickEnded: true };
+            return this.completeTrick();
         }
 
         return { success: true, gameState: this.getGameState() };
+    }
+
+    // ✅ ЗАВЕРШЕНИЕ ВЗЯТКИ — ОПРЕДЕЛЕНИЕ ПОБЕДИТЕЛЯ
+    completeTrick() {
+        const winner = this.determineTrickWinner();
+        const winningCard = this.cardsPlayedThisTrick[winner].card;
+
+        this.players[winner].tricks++;
+        this.trickLeaderIdx = winner;
+        this.currentTrick++;
+
+        console.log(`🏆 Взятку выиграл игрок ${winner} (${this.players[winner].name}) с картой ${winningCard.rank}${winningCard.suit}`);
+        console.log(`📊 Всего взяток: ${this.currentTrick}/${this.cardsPerRound}`);
+
+        // ✅ ОТПРАВЛЯЕМ СОСТОЯНИЕ С КАРТАМИ НА СТОЛЕ
+        const gameState = this.getGameState();
+        io.to(this.roomId).emit('cardPlayed', gameState);
+
+        // ✅ ПРОВЕРЯЕМ ЗАВЕРШЕНИЕ РАУНДА
+        if (this.currentTrick >= this.cardsPerRound) {
+            console.log('🎯 Раунд завершен');
+
+            io.to(this.roomId).emit('roundFinished', {
+                roundNumber: this.modeRoundCount + 1,
+                totalRounds: this.actualRounds,
+                playersScores: this.players.map(p => ({
+                    name: p.name,
+                    tricks: p.tricks,
+                    bid: p.bid
+                }))
+            });
+
+            setTimeout(() => {
+                return this.endRound();
+            }, 5000);
+
+            return { success: true, gameState: gameState, roundEnded: true };
+        }
+
+        // ✅ ПАУЗА 3 СЕКУНДЫ ПЕРЕД СБРОСОМ КАРТ
+        setTimeout(() => {
+            this.cardsPlayedThisTrick = [];
+            this.leadSuit = null;
+            console.log('🎴 Взятка завершена, сброс leadSuit');
+
+            // ✅ ОТПРАВЛЯЕМ СОСТОЯНИЕ КАЖДОМУ ИГРОКУ С ЕГО РУКОЙ
+            this.players.forEach((player, idx) => {
+                const socket = this.players[idx].socketId;
+                if (socket) {
+                    const stateWithHand = this.getGameStateWithHand(idx);
+                    io.to(socket).emit('gameState', stateWithHand);
+                    console.log(`📤 Отправлено gameState игроку ${idx} с ${stateWithHand.hand.length} карт`);
+                }
+            });
+
+            console.log('📊 Состояние с руками отправлено всем игрокам');
+        }, 3000);
+
+        return { success: true, gameState: gameState, trickEnded: true };
     }
 
     getValidCards(player) {
@@ -625,7 +671,9 @@ class OnlineGame {
 
         if (sameSuitIndices.length > 0) {
             const jokerIndices = hand.map((_, i) => i).filter(i => hand[i].isSixSpades);
-            console.log('  ✅ Есть масть хода — возвращаем масть + джокер');
+            if (jokerIndices.length > 0) {
+                console.log('  ✅ Есть масть хода + джокер — джокер можно сыграть с выбором силы');
+            }
             return [...sameSuitIndices, ...jokerIndices];
         }
 
@@ -653,6 +701,53 @@ class OnlineGame {
         return hand.map((_, i) => i);
     }
 
+    // ✅ ГАРАНТИРУЕТ ЧТО ДЖОКЕР БУДЕТ В РАЗДАЧЕ (для тест-режима)
+    ensureJokerInDeal() {
+        if (!this.testMode) return;
+
+        // ✅ Проверяем, есть ли джокер у кого-то из игроков
+        let jokerDealt = false;
+        let jokerHolder = null;
+
+        for (let i = 0; i < this.players.length; i++) {
+            const player = this.players[i];
+            const jokerIndex = player.hand.findIndex(c => c.isSixSpades);
+
+            if (jokerIndex !== -1) {
+                jokerDealt = true;
+                jokerHolder = i;
+                break;
+            }
+        }
+
+        // ✅ Если джокер уже в раздаче — ничего не делаем
+        if (jokerDealt) {
+            console.log(`🃏 Джокер уже в раздаче (у игрока ${jokerHolder})`);
+            return;
+        }
+
+        // ✅ Если джокер ещё в колоде — меняем его с случайной картой
+        const jokerInDeck = this.deck.cards.findIndex(c => c.isSixSpades);
+
+        if (jokerInDeck !== -1) {
+            // ✅ Выбираем случайного игрока и случайную карту у него
+            const randomPlayerIdx = Math.floor(Math.random() * this.players.length);
+            const randomPlayer = this.players[randomPlayerIdx];
+
+            if (randomPlayer.hand.length > 0) {
+                const cardToSwapIdx = Math.floor(Math.random() * randomPlayer.hand.length);
+                const cardToSwap = randomPlayer.hand[cardToSwapIdx];
+
+                // ✅ Меняем местами
+                const joker = this.deck.cards.splice(jokerInDeck, 1)[0];
+                randomPlayer.hand[cardToSwapIdx] = joker;
+                this.deck.cards.push(cardToSwap);
+
+                console.log(`🃏 Джокер добавлен в раздачу (игрок ${randomPlayerIdx}, замена: ${cardToSwap.rank}${cardToSwap.suit})`);
+            }
+        }
+    }
+
     determineTrickWinner() {
         if (this.cardsPlayedThisTrick.length === 0) return this.trickLeaderIdx;
 
@@ -665,14 +760,26 @@ class OnlineGame {
         for (let i = 1; i < this.cardsPlayedThisTrick.length; i++) {
             const card = this.cardsPlayedThisTrick[i].card;
 
+            // ✅ ОБРАБОТКА ДЖОКЕРА С ВЫБОРОМ СИЛЫ
             if (card.isSixSpades) {
-                bestIdx = i;
-                bestCard = card;
+                const jokerPower = card.jokerPower || 'high';  // По умолчанию — старший
+
+                if (jokerPower === 'high') {
+                    // ✅ Джокер-старший бьёт всё
+                    bestIdx = i;
+                    bestCard = card;
+                }
+                // ✅ Джокер-младший — игнорируем (он слабее любой обычной карты)
+                // Не обновляем bestIdx/bestCard, джокер просто "пропускает" взятку
                 continue;
             }
 
-            if (bestCard.isSixSpades) continue;
+            // ✅ Если лучшая карта — джокер-старший, его не перебить
+            if (bestCard.isSixSpades && bestCard.jokerPower === 'high') {
+                continue;
+            }
 
+            // ✅ Обычная логика сравнения
             if (leadSuit === '♠') {
                 if (card.suit === '♠' && card.value > bestCard.value) {
                     bestIdx = i;
@@ -801,7 +908,8 @@ class OnlineGame {
                 card: card.toJSON()
             })),
             leadSuit: this.leadSuit,
-            currentTrick: this.currentTrick
+            currentTrick: this.currentTrick,
+            testMode: this.testMode
         };
     }
 
@@ -827,16 +935,23 @@ class OnlineGame {
 io.on('connection', (socket) => {
     console.log('🔌 Игрок подключился:', socket.id);
 
-    socket.on('createRoom', ({ playerName, maxPlayers = 4 }) => {
+    socket.on('createRoom', ({ playerName, maxPlayers = 4, testMode = false }) => {
         const roomId = uuidv4().substr(0, 6).toUpperCase();
         const room = new OnlineGame(roomId, maxPlayers);
+
+        // ✅ Включаем тест-режим если запрошено
+        room.testMode = testMode;
 
         const result = room.addPlayer(socket.id, playerName);
         if (result.success) {
             rooms[roomId] = room;
             socket.join(roomId);
-            socket.emit('roomCreated', { roomId, playerIdx: result.playerIdx });
-            console.log(`🏠 Комната создана: ${roomId}`);
+            socket.emit('roomCreated', {
+                roomId,
+                playerIdx: result.playerIdx,
+                testMode: testMode  // ✅ Сообщаем клиенту
+            });
+            console.log(`🏠 Комната создана: ${roomId}${testMode ? ' (ТЕСТ-РЕЖИМ)' : ''}`);
         } else {
             socket.emit('error', result.error);
         }
@@ -919,6 +1034,49 @@ io.on('connection', (socket) => {
 
         const state = room.getGameStateWithHand(playerIdx);
         socket.emit('gameState', state);
+    });
+
+    // ✅ ОБРАБОТЧИК: Игрок выбрал силу джокера
+    socket.on('jokerChoice', ({ roomId, playerIdx, choice }) => {
+        const room = rooms[roomId];
+        if (!room || !room.pendingJoker) return;
+
+        console.log(`🃏 Игрок ${playerIdx} выбрал силу джокера: ${choice}`);
+
+        // ✅ Применяем выбор к карте
+        room.pendingJoker.card.jokerPower = choice;
+
+        // ✅ Сохраняем выбор
+        room.jokerChoices[playerIdx] = choice;
+
+        // ✅ Очищаем ожидание
+        room.pendingJoker = null;
+
+        // ✅ НЕ завершаем взятку сразу! Проверяем, все ли походили
+        if (room.cardsPlayedThisTrick.length >= room.players.length) {
+            // ✅ Все походили — можно завершать взятку
+            const result = room.completeTrick();
+
+            if (result && result.success) {
+                io.to(roomId).emit('cardPlayed', result.gameState);
+                console.log(`✅ Взятка завершена с учётом джокера`);
+            }
+        } else {
+            // ✅ Ещё не все походили — отправляем состояние С РУКАМИ каждому игроку
+            console.log(`⏳ Ожидание ходов остальных игроков (${room.cardsPlayedThisTrick.length}/${room.players.length})`);
+
+            // ✅ ОТПРАВЛЯЕМ СОСТОЯНИЕ КАЖДОМУ ИГРОКУ С ЕГО РУКОЙ (как в completeTrick)
+            room.players.forEach((player, idx) => {
+                const socket = room.players[idx].socketId;
+                if (socket) {
+                    const stateWithHand = room.getGameStateWithHand(idx);
+                    io.to(socket).emit('gameState', stateWithHand);
+                    console.log(`📤 Отправлено gameState игроку ${idx} с ${stateWithHand.hand.length} карт`);
+                }
+            });
+
+            console.log('📊 Состояние с руками отправлено всем игрокам');
+        }
     });
 
     socket.on('disconnect', (reason) => {
