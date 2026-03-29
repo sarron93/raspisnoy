@@ -21,18 +21,19 @@ const SUITS = ['♠', '♥', '♦', '♣'];
 const RANKS = ['6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 const VALUES = { '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14 };
 
+
 const GameMode = {
-    CLASSIC: { name: '🎯 Классика', fullDeck: false },
-    MISER: { name: '😈 Мизер', fullDeck: false },  // ✅ ДОБАВЛЕНО
-    NO_TRUMP: { name: '🃏 Бескозырка', fullDeck: true },
-    GOLDEN: { name: '💰 Золотая', fullDeck: true },
-    BLIND: { name: '👁️ Слепая', fullDeck: true },
-    KHAPKI: { name: '🔥 Хапки', fullDeck: false }
+    CLASSIC: { name: '🎯 Классика', fullDeck: false },  // 6 раундов (1→2→3→4→5→6)
+    MISER: { name: '😈 Мизер', fullDeck: true },        // ✅ 11 раундов (вся колода)
+    NO_TRUMP: { name: '🃏 Бескозырка', fullDeck: true }, // ✅ 11 раундов (вся колода)
+    GOLDEN: { name: '💰 Золотая', fullDeck: true },      // ✅ 11 раундов (вся колода)
+    BLIND: { name: '👁️ Слепая', fullDeck: true },        // ✅ 11 раундов (вся колода)
+    KHAPKI: { name: '🔥 Хапки', fullDeck: true }         // ✅ 11 раундов (вся колода)
 };
 
 const CAMPAIGN_MODES = [
     GameMode.CLASSIC,
-    GameMode.MISER,      // ✅ ДОБАВЛЕНО
+    GameMode.MISER,
     GameMode.NO_TRUMP,
     GameMode.GOLDEN,
     GameMode.BLIND,
@@ -293,7 +294,9 @@ class OnlineGame {
     }
 
     getMaxRounds() {
-        return 11;
+        // ✅ Если режим с полной колодой — 11 раундов
+        // ✅ Если классика — 6 раундов
+        return this.getCurrentMode().fullDeck ? 11 : 6;
     }
 
     startGame() {
@@ -529,21 +532,21 @@ class OnlineGame {
         this.players.forEach(p => {
             let points = 0;
 
-            // ✅ РЕЖИМ МИЗЕР — нужно взять 0 взяток
+            // 😈 РЕЖИМ МИЗЕР
             if (mode === GameMode.MISER) {
                 if (p.tricks === 0) {
-                    points = 20 * multiplier;  // ✅ Успех — 20 очков
+                    points = 20 * multiplier;
                     console.log(`🎯 ${p.name}: Мизер сыграл! +${points}`);
                 } else {
-                    points = -10 * p.tricks * multiplier;  // ❌ Провал — -10 за каждую взятку
+                    points = -10 * p.tricks * multiplier;
                     console.log(`😞 ${p.name}: Мизер провален (${p.tricks} взяток) ${points}`);
                 }
             }
-            // ✅ ОБЫЧНЫЕ РЕЖИМЫ — нужно угадать взятки
+            // 🎯 ОБЫЧНЫЕ РЕЖИМЫ
             else {
                 if (p.tricks === p.bid) {
                     points = 10 * p.bid * multiplier;
-                    if (p.bid === 0) points = 5 * multiplier;  // Бонус за ноль
+                    if (p.bid === 0) points = 5 * multiplier;
                 } else if (p.tricks > p.bid) {
                     points = p.tricks * multiplier;
                 } else {
@@ -558,24 +561,31 @@ class OnlineGame {
         this.modeRoundCount++;
         const maxRounds = this.getMaxRounds();
 
+        // ✅ РАСЧЁТ КОЛИЧЕСТВА КАРТ ДЛЯ СЛЕДУЮЩЕГО РАУНДА
         if (this.modeRoundCount < maxRounds) {
             if (this.modeRoundCount < 6) {
+                // 🔼 Восходящая часть: 1→2→3→4→5→6
                 this.cardsPerRound = this.modeRoundCount + 1;
             } else {
+                // 🔽 Нисходящая часть: 5→4→3→2→1
                 this.cardsPerRound = maxRounds - this.modeRoundCount;
             }
-            console.log(`🎴 Следующий раунд: ${this.cardsPerRound} карт`);
+            console.log(`🎴 Следующий раунд: ${this.cardsPerRound} карт (раунд ${this.modeRoundCount + 1}/${maxRounds})`);
         }
 
+        // ✅ ПРОВЕРКА ЗАВЕРШЕНИЯ РЕЖИМА
         if (this.modeRoundCount >= maxRounds) {
             if (this.currentModeIdx < CAMPAIGN_MODES.length - 1) {
                 this.currentModeIdx++;
                 this.modeRoundCount = 0;
                 this.cardsPerRound = 1;
+
+                // ✅ Сброс истории колоды для нового режима
                 if (this.deck) {
                     this.deck.dealtHistory = [];
                     console.log('🔄 Баланс колоды сброшен для нового режима');
                 }
+
                 console.log(`🎉 Смена режима: ${this.getCurrentMode().name}`);
             } else {
                 this.gameState = 'finished';

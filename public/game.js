@@ -312,8 +312,10 @@ class OnlinePokerGame {
             turnBar.classList.add('miser');
         }
 
+        // ✅ Показываем правильное количество раундов (6 или 11)
+        const maxRounds = this.gameState.maxRounds;
         infoBar.innerHTML = `
-        <span>🎲 ${this.gameState.roundNumber}/11</span>
+        <span>🎲 ${this.gameState.roundNumber}/${maxRounds}</span>
         <span>|</span>
         <span>🃏 ${this.gameState.cardsPerRound}</span>
         <span>|</span>
