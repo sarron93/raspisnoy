@@ -402,12 +402,26 @@ class OnlineGame {
         this.cardsPlayedThisTrick.push({ playerIdx, card });
         console.log(`🃏 Игрок ${playerIdx} сыграл ${card.rank}${card.suit}, карт на столе: ${this.cardsPlayedThisTrick.length}`);
 
+        // ✅ ЕСЛИ ВСЕ ПОХОДИЛИ — ОПРЕДЕЛЯЕМ ПОБЕДИТЕЛЯ
         if (this.cardsPlayedThisTrick.length >= this.players.length) {
             const winner = this.determineTrickWinner();
+            const winningCard = this.cardsPlayedThisTrick[winner].card;
+
             this.players[winner].tricks++;
             this.trickLeaderIdx = winner;
             this.currentTrick++;
-            console.log(`🏆 Взятку выиграл игрок ${winner}, всего взяток: ${this.currentTrick}/${this.cardsPerRound}`);
+
+            console.log(`🏆 Взятку выиграл игрок ${winner} (${this.players[winner].name}) с картой ${winningCard.rank}${winningCard.suit}`);
+            console.log(`📊 Всего взяток: ${this.currentTrick}/${this.cardsPerRound}`);
+
+            // ✅ ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ О ПОБЕДИТЕЛЕ ВСЕМ ИГРОКАМ
+            io.to(this.roomId).emit('trickWon', {
+                winnerIdx: winner,
+                winnerName: this.players[winner].name,
+                card: winningCard.toJSON(),
+                trickNumber: this.currentTrick,
+                totalTricks: this.cardsPerRound
+            });
 
             if (this.currentTrick >= this.cardsPerRound) {
                 console.log('🎯 Раунд завершен');
