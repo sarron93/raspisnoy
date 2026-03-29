@@ -102,3 +102,20 @@ body::before {
 .text-accent { color: var(--accent); }
 .text-secondary { color: var(--secondary); }
 
+/* 😈 МИЗЕР — СПЕЦИАЛЬНЫЙ СТИЛЬ */
+.mode-bar.miser {
+    background: linear-gradient(135deg, rgba(138, 43, 226, 0.95), rgba(75, 0, 130, 0.95));
+    box-shadow: 0 3px 15px rgba(138, 43, 226, 0.4);
+}
+
+.turn-bar.miser {
+    background: linear-gradient(135deg, rgba(138, 43, 226, 0.95), rgba(148, 0, 211, 0.95));
+    box-shadow: 0 3px 15px rgba(138, 43, 226, 0.4);
+}
+
+.message.miser {
+    background: rgba(138, 43, 226, 0.15);
+    border-color: #8a2be2;
+    color: #da70d6;
+}
+

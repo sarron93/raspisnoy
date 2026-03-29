@@ -18,6 +18,7 @@ const VALUES = { '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K'
 
 const GameMode = {
     CLASSIC: { name: '🎯 Классика', fullDeck: false },
+    MISER: { name: '😈 Мизер', fullDeck: false },  // ✅ ДОБАВЛЕНО
     NO_TRUMP: { name: '🃏 Бескозырка', fullDeck: true },
     GOLDEN: { name: '💰 Золотая', fullDeck: true },
     BLIND: { name: '👁️ Слепая', fullDeck: true },
@@ -26,6 +27,7 @@ const GameMode = {
 
 const CAMPAIGN_MODES = [
     GameMode.CLASSIC,
+    GameMode.MISER,      // ✅ ДОБАВЛЕНО
     GameMode.NO_TRUMP,
     GameMode.GOLDEN,
     GameMode.BLIND,
@@ -53,32 +55,178 @@ class Card {
 class Deck {
     constructor() {
         this.cards = [];
+        this.frequencies = [];
+        this.dealtHistory = []; // История выданных карт
+        this.maxHistory = 20;   // Размер истории для балансировки
+        this.baseFrequency = 1; // Базовый вес
+        this.boostFactor = 1.5; // Множитель усиления "забытых" карт
+        this.penaltyFactor = 0.7; // Множитель ослабления "частых" карт
+
         this.createDeck();
     }
 
     createDeck() {
+        this.cards = [];
+        this.frequencies = [];
+        this.dealtHistory = [];
+
         for (let suit of SUITS) {
             for (let rank of RANKS) {
                 const isSixSpades = (suit === '♠' && rank === '6');
-                this.cards.push(new Card(suit, rank, isSixSpades));
+                const card = new Card(suit, rank, isSixSpades);
+                this.cards.push(card);
+                this.frequencies.push(this.baseFrequency);
             }
         }
         this.shuffle();
     }
 
-    shuffle() {
-        for (let i = this.cards.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [this.cards[i], this.cards[j]] = [this.cards[j], this.cards[i]];
+    /**
+     * 🎲 Динамическая балансировка частот перед тасованием
+     * - Увеличивает вес карт, которые давно не выдавались
+     * - Уменьшает вес карт, которые выдавались недавно
+     */
+    rebalanceFrequencies() {
+        // ✅ Считаем, сколько раз каждая карта была в истории
+        const cardUsage = new Map();
+
+        for (const cardKey of this.dealtHistory) {
+            cardUsage.set(cardKey, (cardUsage.get(cardKey) || 0) + 1);
+        }
+
+        // ✅ Корректируем частоты
+        for (let i = 0; i < this.cards.length; i++) {
+            const card = this.cards[i];
+            const cardKey = this.getCardKey(card);
+            const usage = cardUsage.get(cardKey) || 0;
+
+            if (usage === 0) {
+                // Карта давно не выдавалась — повышаем шанс
+                this.frequencies[i] = this.baseFrequency * this.boostFactor;
+            } else if (usage >= 3) {
+                // Карта выдавалась слишком часто — понижаем шанс
+                this.frequencies[i] = this.baseFrequency * this.penaltyFactor;
+            } else {
+                // Нормальная частота
+                this.frequencies[i] = this.baseFrequency;
+            }
+
+            // ✅ Гарантируем минимальный вес > 0
+            this.frequencies[i] = Math.max(0.1, this.frequencies[i]);
+        }
+
+        console.log(`📊 Балансировка частот: ${cardUsage.size} уникальных карт в истории`);
+    }
+
+    /**
+     * 🔑 Генерирует уникальный ключ для карты
+     */
+    getCardKey(card) {
+        return `${card.suit}-${card.rank}-${card.isSixSpades ? 'joker' : 'normal'}`;
+    }
+
+    /**
+     * 🃏 Добавляет карту в историю выданных
+     */
+    recordCardDealt(card) {
+        const cardKey = this.getCardKey(card);
+        this.dealtHistory.unshift(cardKey); // Добавляем в начало
+
+        // ✅ Ограничиваем размер истории
+        if (this.dealtHistory.length > this.maxHistory) {
+            this.dealtHistory.pop();
         }
     }
 
+    /**
+     * 🔀 Взвешенное тасование с балансировкой
+     */
+    shuffle() {
+        if (!Array.isArray(this.cards) || this.cards.length === 0) {
+            console.error('❌ Invalid cards array');
+            return;
+        }
+
+        // ✅ Сначала балансируем частоты
+        this.rebalanceFrequencies();
+
+        console.log('🔀 Тасуем карты с балансировкой...');
+
+        // ✅ Алгоритм Fisher-Yates с весами
+        for (let i = this.cards.length - 1; i > 0; i--) {
+            // ✅ Считаем суммарный вес оставшихся карт
+            let totalWeight = 0;
+            for (let j = 0; j <= i; j++) {
+                totalWeight += this.frequencies[j];
+            }
+
+            // ✅ Выбираем случайный индекс с учётом весов
+            let randomValue = Math.random() * totalWeight;
+            let cumulativeWeight = 0;
+
+            for (let j = 0; j <= i; j++) {
+                cumulativeWeight += this.frequencies[j];
+                if (randomValue < cumulativeWeight) {
+                    // ✅ Меняем местами карты И их частоты
+                    [this.cards[i], this.cards[j]] = [this.cards[j], this.cards[i]];
+                    [this.frequencies[i], this.frequencies[j]] = [this.frequencies[j], this.frequencies[i]];
+                    break;
+                }
+            }
+        }
+
+        console.log('✅ Карты растасованы');
+    }
+
+    /**
+     * 🎴 Выдаёт карты игроку с записью в историю
+     */
     deal(numCards) {
-        return this.cards.splice(0, numCards);
+        const dealt = this.cards.splice(0, numCards);
+        const dealtFreqs = this.frequencies.splice(0, numCards);
+
+        // ✅ Записываем выданные карты в историю
+        for (const card of dealt) {
+            this.recordCardDealt(card);
+        }
+
+        // ✅ Сбрасываем частоты выданных карт к базовым (они вернутся в колоду позже)
+        for (let i = 0; i < dealtFreqs.length; i++) {
+            dealtFreqs[i] = this.baseFrequency;
+        }
+
+        return dealt;
+    }
+
+    /**
+     * ♻️ Возвращает карты в колоду (для следующего раунда)
+     */
+    returnCards(cards) {
+        for (const card of cards) {
+            this.cards.push(card);
+            this.frequencies.push(this.baseFrequency);
+        }
     }
 
     size() {
         return this.cards.length;
+    }
+
+    /**
+     * 📊 Статистика для отладки
+     */
+    getStats() {
+        const avgFreq = this.frequencies.reduce((a, b) => a + b, 0) / this.frequencies.length;
+        const minFreq = Math.min(...this.frequencies);
+        const maxFreq = Math.max(...this.frequencies);
+
+        return {
+            totalCards: this.cards.length,
+            avgFrequency: avgFreq.toFixed(2),
+            minFrequency: minFreq.toFixed(2),
+            maxFrequency: maxFreq.toFixed(2),
+            historySize: this.dealtHistory.length
+        };
     }
 }
 
@@ -169,7 +317,7 @@ class OnlineGame {
         });
 
         if (mode !== GameMode.NO_TRUMP && this.deck.size() > 0) {
-            this.trumpCard = this.deck.cards[this.deck.size() - 1];
+            this.trumpCard = this.deck.cards[Math.floor(Math.random() * this.deck.size())];
             if (this.trumpCard.suit === '♠') {
                 this.trumpSuit = null;
                 this.trumpCard = null;
@@ -375,18 +523,29 @@ class OnlineGame {
 
         this.players.forEach(p => {
             let points = 0;
+
+            // ✅ РЕЖИМ МИЗЕР — нужно взять 0 взяток
             if (mode === GameMode.MISER) {
-                points = p.tricks === 0 ? 20 * multiplier : -10 * p.tricks * multiplier;
-            } else {
+                if (p.tricks === 0) {
+                    points = 20 * multiplier;  // ✅ Успех — 20 очков
+                    console.log(`🎯 ${p.name}: Мизер сыграл! +${points}`);
+                } else {
+                    points = -10 * p.tricks * multiplier;  // ❌ Провал — -10 за каждую взятку
+                    console.log(`😞 ${p.name}: Мизер провален (${p.tricks} взяток) ${points}`);
+                }
+            }
+            // ✅ ОБЫЧНЫЕ РЕЖИМЫ — нужно угадать взятки
+            else {
                 if (p.tricks === p.bid) {
                     points = 10 * p.bid * multiplier;
-                    if (p.bid === 0) points = 5 * multiplier;
+                    if (p.bid === 0) points = 5 * multiplier;  // Бонус за ноль
                 } else if (p.tricks > p.bid) {
                     points = p.tricks * multiplier;
                 } else {
                     points = -10 * (p.bid - p.tricks) * multiplier;
                 }
             }
+
             p.score += points;
             console.log(`📊 ${p.name}: ${points >= 0 ? '+' : ''}${points} (Всего: ${p.score})`);
         });
@@ -408,6 +567,10 @@ class OnlineGame {
                 this.currentModeIdx++;
                 this.modeRoundCount = 0;
                 this.cardsPerRound = 1;
+                if (this.deck) {
+                    this.deck.dealtHistory = [];
+                    console.log('🔄 Баланс колоды сброшен для нового режима');
+                }
                 console.log(`🎉 Смена режима: ${this.getCurrentMode().name}`);
             } else {
                 this.gameState = 'finished';
@@ -423,6 +586,7 @@ class OnlineGame {
 
         return { success: true, gameState: this.getGameState() };
     }
+
 
     getGameState() {
         return {
@@ -570,16 +734,55 @@ io.on('connection', (socket) => {
 
         for (const roomId in rooms) {
             const room = rooms[roomId];
-            const shouldDelete = room.removePlayer(socket.id);
+            const playerIdx = room.players.findIndex(p => p.socketId === socket.id);
 
-            io.to(roomId).emit('playerLeft', room.getGameState());
+            if (playerIdx !== -1) {
+                const playerName = room.players[playerIdx].name;
+                const isGameActive = room.gameState === 'playing' || room.gameState === 'bidding';
 
-            if (shouldDelete) {
-                delete rooms[roomId];
-                console.log(`🗑️ Комната ${roomId} удалена`);
+                // ✅ Помечаем игрока как отключённого
+                room.players[playerIdx].isConnected = false;
+
+                // ✅ Если игра активна — уведомляем всех и завершаем
+                if (isGameActive) {
+                    console.log(`⚠️ Игрок ${playerName} покинул активную игру в комнате ${roomId}`);
+
+                    // ✅ Отправляем уведомление всем игрокам
+                    io.to(roomId).emit('playerDisconnected', {
+                        playerName: playerName,
+                        reason: 'Игрок покинул игру',
+                        gameState: room.getGameState()
+                    });
+
+                    // ✅ Завершаем игру с флагом "прервана"
+                    io.to(roomId).emit('gameAborted', {
+                        reason: `Игрок "${playerName}" покинул стол`,
+                        finalState: room.getGameState()
+                    });
+
+                    // ✅ Очищаем комнату
+                    delete rooms[roomId];
+                    console.log(`🗑️ Комната ${roomId} удалена (игра прервана)`);
+                    break;
+                }
+
+                // ✅ Если игра ещё не началась — просто удаляем игрока
+                room.players.splice(playerIdx, 1);
+
+                // ✅ Если комната пустая — удаляем её
+                if (room.players.length === 0) {
+                    delete rooms[roomId];
+                    console.log(`🗑️ Комната ${roomId} удалена (пустая)`);
+                } else {
+                    // ✅ Уведомляем остальных, что игрок вышел (только в лобби)
+                    io.to(roomId).emit('playerLeft', room.getGameState());
+                    console.log(`👤 Игрок ${playerName} вышел из комнаты ${roomId} (лобби)`);
+                }
+                break;
             }
         }
     });
+
 });
 
 const PORT = process.env.PORT || 3000;

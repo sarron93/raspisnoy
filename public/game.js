@@ -96,6 +96,32 @@ class OnlinePokerGame {
             }
             this.updateStatus(error, 'error');
         });
+
+        // ✅ Обработчик: игрок отключился во время игры
+        this.socket.on('playerDisconnected', ({ playerName, reason, gameState }) => {
+            console.log('⚠️ Игрок отключился:', playerName, reason);
+
+            // ✅ Показываем уведомление
+            alert(`⚠️ ${reason}\n\nИгрок "${playerName}" покинул стол.\n\nИгра будет завершена.`);
+
+            // ✅ Возвращаем в меню
+            this.showScreen('menuScreen');
+            this.updateStatus('⚠️ Игра прервана', 'error');
+        });
+
+        // ✅ Обработчик: игра прервана
+        this.socket.on('gameAborted', ({ reason, finalState }) => {
+            console.log('🏁 Игра прервана:', reason);
+
+            // ✅ Показываем финальное уведомление
+            alert(`🏁 ${reason}\n\nРаунд завершён досрочно.`);
+
+            // ✅ Возвращаем в главное меню
+            this.showScreen('menuScreen');
+            this.updateStatus('🔄 Готов к новой игре', 'success');
+        });
+
+
     }
 
     createRoom() {
@@ -180,16 +206,28 @@ class OnlinePokerGame {
     }
 
     updateHeaders() {
-        document.getElementById('modeBar').textContent = `${this.gameState.mode}`;
-
+        const modeBar = document.getElementById('modeBar');
+        const turnBar = document.getElementById('turnBar');
         const infoBar = document.getElementById('infoBar');
+
+        modeBar.textContent = `${this.gameState.mode}`;
+
+        // ✅ Добавляем класс для Мизера
+        modeBar.className = 'mode-bar';
+        turnBar.className = 'turn-bar';
+
+        if (this.gameState.mode === '😈 Мизер') {
+            modeBar.classList.add('miser');
+            turnBar.classList.add('miser');
+        }
+
         infoBar.innerHTML = `
-            <span>🎲 ${this.gameState.roundNumber}/11</span>
-            <span>|</span>
-            <span>🃏 ${this.gameState.cardsPerRound}</span>
-            <span>|</span>
-            <span>${this.gameState.trumpSuit ? `🂡 ${this.gameState.trumpSuit}` : '🚫'}</span>
-        `;
+        <span>🎲 ${this.gameState.roundNumber}/11</span>
+        <span>|</span>
+        <span>🃏 ${this.gameState.cardsPerRound}</span>
+        <span>|</span>
+        <span>${this.gameState.trumpSuit ? `🂡 ${this.gameState.trumpSuit}` : '🚫'}</span>
+    `;
 
         document.getElementById('progressBar').textContent =
             `Режим ${this.gameState.modeIdx}/${this.gameState.totalModes}`;
@@ -545,24 +583,37 @@ class OnlinePokerGame {
         const currentPlayerIdx = this.getCurrentPlayerIdx();
         if (currentPlayerIdx !== this.playerIdx) return;
 
+        const mode = this.gameState.mode;
         let ruleText = '🎴 ПЕРВЫЙ ХОД — ЛЮБАЯ КАРТА!';
+
+        // ✅ СПЕЦИАЛЬНАЯ ПОДСКАЗКА ДЛЯ МИЗЕРА
+        if (mode === '😈 Мизер') {
+            ruleText = '😈 МИЗЕР! Старайтесь НЕ брать взятки!';
+        }
 
         const cardsOnTableCount = this.gameState.cardsOnTable ? this.gameState.cardsOnTable.length : 0;
         if (cardsOnTableCount > 0 && this.gameState.leadSuit) {
-            const mode = this.gameState.mode;
             const sameSuitCards = this.myHand.filter(card => card.suit === this.gameState.leadSuit && !card.isSixSpades);
 
             if (sameSuitCards.length > 0) {
-                ruleText = `🎴 ОБЯЗАН ходить в ${this.gameState.leadSuit}! (или 🃏)`;
+                ruleText = mode === '😈 Мизер'
+                    ? `😈 МИЗЕР! ОБЯЗАН ходить в ${this.gameState.leadSuit}! (или 🃏)`
+                    : `🎴 ОБЯЗАН ходить в ${this.gameState.leadSuit}! (или 🃏)`;
             } else if (mode !== '🃏 Бескозырка' && this.gameState.trumpSuit) {
                 const trumpCards = this.myHand.filter(card => card.suit === this.gameState.trumpSuit && !card.isSixSpades);
                 if (trumpCards.length > 0) {
-                    ruleText = `🎴 Нет ${this.gameState.leadSuit} — ОБЯЗАН бить ${this.gameState.trumpSuit}! (или 🃏)`;
+                    ruleText = mode === '😈 Мизер'
+                        ? `😈 МИЗЕР! Нет ${this.gameState.leadSuit} — ОБЯЗАН бить ${this.gameState.trumpSuit}! (или 🃏)`
+                        : `🎴 Нет ${this.gameState.leadSuit} — ОБЯЗАН бить ${this.gameState.trumpSuit}! (или 🃏)`;
                 } else {
-                    ruleText = `🎴 Нет ${this.gameState.leadSuit} и козырей — СБРАСЫВАЙТЕ ЛЮБУЮ!`;
+                    ruleText = mode === '😈 Мизер'
+                        ? `😈 МИЗЕР! Нет масти и козырей — СБРАСЫВАЙТЕ ЛЮБУЮ (мелкую)!`
+                        : `🎴 Нет ${this.gameState.leadSuit} и козырей — СБРАСЫВАЙТЕ ЛЮБУЮ!`;
                 }
             } else {
-                ruleText = `🎴 Нет ${this.gameState.leadSuit} — СБРАСЫВАЙТЕ ЛЮБУЮ!`;
+                ruleText = mode === '😈 Мизер'
+                    ? `😈 МИЗЕР! Нет ${this.gameState.leadSuit} — СБРАСЫВАЙТЕ ЛЮБУЮ (мелкую)!`
+                    : `🎴 Нет ${this.gameState.leadSuit} — СБРАСЫВАЙТЕ ЛЮБУЮ!`;
             }
         }
 
