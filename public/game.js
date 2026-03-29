@@ -115,8 +115,15 @@ class OnlinePokerGame {
 
         this.socket.on('cardPlayed', (state) => {
             console.log('🃏 Карта сыграна');
-            this.gameState = state;
-            this.requestGameState();
+
+            // ✅ Если раунд завершен — не запрашиваем состояние сразу
+            if (state.roundEnded) {
+                this.gameState = state;
+                // ✅ Ждём roundStarted для обновления
+            } else {
+                this.gameState = state;
+                this.requestGameState();
+            }
         });
 
         this.socket.on('gameState', (state) => {
@@ -184,7 +191,86 @@ class OnlinePokerGame {
             setTimeout(() => this.requestGameState(), 2500);
         });
 
+        // ✅ ОБРАБОТЧИК: Раунд завершен (пауза перед следующим)
+        this.socket.on('roundFinished', ({ roundNumber, totalRounds, playersScores }) => {
+            console.log('🎯 Раунд завершен:', roundNumber, 'из', totalRounds);
+
+            // ✅ Показываем красивое уведомление
+            this.showRoundFinishedNotification(roundNumber, totalRounds, playersScores);
+
+            // ✅ Блокируем интерфейс на время паузы
+            this.isProcessing = true;
+        });
+
+        // ✅ ОБРАБОТЧИК: Новый раунд начался
+        this.socket.on('roundStarted', (state) => {
+            console.log('🎴 Новый раунд начался');
+            this.gameState = state;
+            this.myHand = state.hand || [];
+            this.isProcessing = false;
+            this.updateGameDisplay();
+        });
     }
+
+    // ✅ МЕТОД: Показ уведомления о завершении раунда
+    showRoundFinishedNotification(roundNumber, totalRounds, playersScores) {
+        // ✅ Создаём уведомление
+        const notification = document.createElement('div');
+        notification.className = 'round-finished-notification';
+        notification.id = 'roundFinishedNotification';
+
+        // ✅ Формируем таблицу результатов раунда
+        let scoresHTML = '';
+        playersScores.forEach(player => {
+            const success = player.tricks === player.bid;
+            scoresHTML += `
+            <div class="player-score ${success ? 'success' : 'fail'}">
+                <span class="player-name">${player.name}</span>
+                <span class="player-result">
+                    ${player.tricks}/${player.bid}
+                    ${success ? '✅' : '❌'}
+                </span>
+            </div>
+        `;
+        });
+
+        notification.innerHTML = `
+        <div class="trophy">🎯</div>
+        <div class="round-title">Раунд завершен</div>
+        <div class="round-number">${roundNumber} из ${totalRounds}</div>
+        <div class="scores-container">
+            ${scoresHTML}
+        </div>
+        <div class="countdown">
+            Следующий раунд через <span id="countdownTimer">5</span> сек...
+        </div>
+    `;
+
+        document.body.appendChild(notification);
+
+        // ✅ Запускаем обратный отсчёт
+        let secondsLeft = 5;
+        const countdownInterval = setInterval(() => {
+            secondsLeft--;
+            const timerElement = document.getElementById('countdownTimer');
+            if (timerElement) {
+                timerElement.textContent = secondsLeft;
+            }
+
+            if (secondsLeft <= 0) {
+                clearInterval(countdownInterval);
+            }
+        }, 1000);
+
+        // ✅ Удаляем уведомление через 5 секунд
+        setTimeout(() => {
+            notification.style.animation = 'roundFinishedSlide 0.4s ease reverse forwards';
+            setTimeout(() => {
+                notification.remove();
+            }, 400);
+        }, 5000);
+    }
+
 
     attemptReconnect() {
         if (this.isReconnecting) return;

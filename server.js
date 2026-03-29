@@ -554,9 +554,28 @@ class OnlineGame {
                 totalTricks: this.cardsPerRound
             });
 
+            // ✅ ПРОВЕРЯЕМ ЗАВЕРШЕНИЕ РАУНДА
             if (this.currentTrick >= this.cardsPerRound) {
                 console.log('🎯 Раунд завершен');
-                return this.endRound();
+
+                // ✅ ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ О ЗАВЕРШЕНИИ РАУНДА (с задержкой)
+                io.to(this.roomId).emit('roundFinished', {
+                    roundNumber: this.modeRoundCount + 1,
+                    totalRounds: this.actualRounds,
+                    playersScores: this.players.map(p => ({
+                        name: p.name,
+                        tricks: p.tricks,
+                        bid: p.bid
+                    }))
+                });
+
+                // ✅ ПАУЗА 5 СЕКУНД ПЕРЕД СЛЕДУЮЩИМ РАУНДОМ
+                setTimeout(() => {
+                    return this.endRound();
+                }, 5000);
+
+                // ✅ Возвращаем состояние но не вызываем endRound сразу
+                return { success: true, gameState: this.getGameState(), roundEnded: true };
             }
 
             this.cardsPlayedThisTrick = [];
@@ -710,9 +729,8 @@ class OnlineGame {
             if (this.currentModeIdx < CAMPAIGN_MODES.length - 1) {
                 this.currentModeIdx++;
                 this.modeRoundCount = 0;
-                this.actualRounds = this.getMaxRounds();  // ✅ Пересчёт для нового режима
+                this.actualRounds = this.getMaxRounds();
 
-                // ✅ Сброс истории колоды
                 if (this.deck) {
                     this.deck.dealtHistory = [];
                     console.log('🔄 Баланс колоды сброшен для нового режима');
@@ -722,6 +740,7 @@ class OnlineGame {
             } else {
                 this.gameState = 'finished';
                 console.log('🏆 Кампания завершена!');
+                io.to(this.roomId).emit('gameFinished', this.getGameState());
                 return { success: true, gameState: this.getGameState(), finished: true };
             }
         }
@@ -729,7 +748,11 @@ class OnlineGame {
         this.dealerIdx = (this.dealerIdx + 1) % this.players.length;
         console.log(`🎴 Новый дилер: игрок ${this.dealerIdx}`);
 
+        // ✅ ЗАПУСКАЕМ СЛЕДУЮЩИЙ РАУНД
         this.startRound();
+
+        // ✅ ОТПРАВЛЯЕМ ОБНОВЛЁННОЕ СОСТОЯНИЕ
+        io.to(this.roomId).emit('roundStarted', this.getGameState());
 
         return { success: true, gameState: this.getGameState() };
     }

@@ -347,3 +347,119 @@
         transform: translateY(100vh) rotate(720deg);
     }
 }
+
+/* 🎯 УВЕДОМЛЕНИЕ О ЗАВЕРШЕНИИ РАУНДА */
+.round-finished-notification {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.8);
+    background: linear-gradient(145deg, rgba(26, 26, 62, 0.98), rgba(15, 15, 46, 0.98));
+    border: 4px solid rgba(78, 204, 163, 0.6);
+    border-radius: 20px;
+    padding: 30px 40px;
+    text-align: center;
+    z-index: 1000;
+    box-shadow:
+            0 0 60px rgba(78, 204, 163, 0.4),
+            0 0 100px rgba(78, 204, 163, 0.2);
+    animation: roundFinishedSlide 0.5s ease forwards;
+    backdrop-filter: blur(20px);
+    min-width: 350px;
+}
+
+@keyframes roundFinishedSlide {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.5) rotate(-10deg);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1) rotate(0);
+    }
+}
+
+.round-finished-notification .trophy {
+    font-size: 4rem;
+    margin-bottom: 10px;
+    animation: trophyBounce 1s ease infinite;
+}
+
+.round-finished-notification .round-title {
+    font-size: 1.5rem;
+    color: var(--secondary);
+    font-weight: 700;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.round-finished-notification .round-number {
+    font-size: 1.1rem;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+}
+
+.scores-container {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 12px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.player-score {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    margin: 5px 0;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.player-score.success {
+    background: rgba(78, 204, 163, 0.2);
+    border: 1px solid rgba(78, 204, 163, 0.4);
+}
+
+.player-score.fail {
+    background: rgba(233, 69, 96, 0.2);
+    border: 1px solid rgba(233, 69, 96, 0.4);
+}
+
+.player-score .player-name {
+    font-weight: 600;
+    color: var(--text);
+}
+
+.player-score .player-result {
+    font-weight: 700;
+    font-size: 1.1rem;
+}
+
+.player-score.success .player-result {
+    color: var(--secondary);
+}
+
+.player-score.fail .player-result {
+    color: var(--primary);
+}
+
+.countdown {
+    font-size: 0.95rem;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.countdown #countdownTimer {
+    color: var(--accent);
+    font-size: 1.2rem;
+    font-weight: 800;
+}
+
+/* 🎆 КОНФЕТТИ ДЛЯ ЗАВЕРШЕНИЯ РАУНДА */
+@keyframes trophyBounce {
+    0%, 100% { transform: translateY(0) rotate(-5deg); }
+    50% { transform: translateY(-10px) rotate(5deg); }
+}
+
