@@ -298,7 +298,6 @@ class OnlineGame {
     }
 
     // ✅ АВТОМАТИЧЕСКОЕ НАЗНАЧЕНИЕ ЗАЯВОК
-    // ✅ АВТОМАТИЧЕСКОЕ НАЗНАЧЕНИЕ ЗАЯВОК (для режимов без торговли)
     autoAssignBids() {
         const mode = this.getCurrentMode();
 
@@ -306,8 +305,12 @@ class OnlineGame {
             if (mode.autoBid === 0) {
                 // 😈 МИЗЕР — все обязаны 0
                 p.bid = 0;
+            } else if (mode === GameMode.KHAPKI) {
+                // 🔥 ХАПКИ — заявки не важны, ставим 0 для отображения
+                p.bid = 0;
+                console.log(`🔥 ${p.name}: Хапки — заявки не важны`);
             } else if (mode.autoBid === null) {
-                // 💰🔥 ЗОЛОТАЯ, ХАПКИ — случайная заявка от 0 до cardsPerRound
+                // 🃏 БЕСКОЗЫРКА — случайная заявка
                 p.bid = Math.floor(Math.random() * (this.cardsPerRound + 1));
             } else {
                 p.bid = mode.autoBid;
@@ -404,6 +407,9 @@ class OnlineGame {
         }
 
         // ✅ РАСЧЁТ ФАКТИЧЕСКОГО КОЛИЧЕСТВА РАУНДОВ
+        // ✅ ЯВНЫЙ СБРОС СЧЁТЧИКОВ ПРИ СТАРТЕ ИГРЫ
+        this.currentModeIdx = 0;  // ✅ Начинаем с Классики
+        this.modeRoundCount = 0;  // ✅ Первый раунд
         this.actualRounds = this.getMaxRounds();
         this.modeRoundCount = 0;
 
@@ -834,6 +840,8 @@ class OnlineGame {
     endRound() {
         const mode = this.getCurrentMode();
         let multiplier = 1;
+
+        // ✅ Проверка множителя (Слепая и Хапки)
         if ([GameMode.BLIND, GameMode.KHAPKI].includes(mode)) {
             multiplier = 2;
         }
@@ -841,7 +849,11 @@ class OnlineGame {
         this.players.forEach(p => {
             let points = 0;
 
-            if (mode === GameMode.MISER) {
+            // 🔥 ХАПКИ — каждая взятка = +20 очков (без сравнения с заявкой)
+            if (mode === GameMode.KHAPKI) {
+                points = p.tricks * 20;  // ✅ Просто 20 очков за каждую взятку
+                console.log(`🔥 ${p.name}: Хапки — ${p.tricks} взяток × 20 = ${points}`);
+            }else if (mode === GameMode.MISER) {
                 if (p.tricks === 0) {
                     points = 20 * multiplier;
                     console.log(`🎯 ${p.name}: Мизер сыграл! +${points}`);
@@ -916,8 +928,8 @@ class OnlineGame {
                 score: p.score,
                 bid: p.hasBid ? p.bid : null,
                 tricks: p.tricks,
-                hasBid: p.hasBid,
-                handLength: p.hand.length,
+                hasBid: p.hasBid,  // ✅ ВАЖНО: для проверки в клиенте
+                handLength: p.hasBid ? p.hand.length : 0,  // ✅ Скрываем количество карт до ставки
                 isDealer: idx === this.dealerIdx
             })),
             currentPlayer: this.gameState === 'bidding' ? this.biddingOrder[this.currentPlayerIdx] : null,
@@ -941,8 +953,20 @@ class OnlineGame {
 
     getGameStateWithHand(playerIdx) {
         const state = this.getGameState();
-        state.hand = this.getPlayerHand(playerIdx);
-        console.log(`📤 Отправляем состояние игроку ${playerIdx}: ${state.hand.length} карт`);
+        const mode = this.getCurrentMode();
+        const player = this.players[playerIdx];
+
+        // ✅ В РЕЖИМЕ СЛЕПАЯ — скрываем карты пока игрок не сделал ставку
+        if (mode.name === '👁️ Слепая' && !player.hasBid) {
+            // ✅ Возвращаем пустую руку пока ставка не сделана
+            state.hand = [];
+            console.log(`👁️ Игрок ${playerIdx} (${player.name}): карты скрыты (нет ставки)`);
+        } else {
+            // ✅ Обычная выдача руки
+            state.hand = this.getPlayerHand(playerIdx);
+            console.log(`📤 Отправляем состояние игроку ${playerIdx}: ${state.hand.length} карт`);
+        }
+
         return state;
     }
 
