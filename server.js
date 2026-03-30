@@ -258,7 +258,10 @@ class OnlineGame {
         // ✅ КЛАССИКА — динамический расчет раундов
         if (mode === GameMode.CLASSIC) {
             const playerCount = this.players.length;
+
             if (playerCount < 2) return 13; // fallback для 1 игрока
+
+            if (playerCount < 3) return 11; // двое играют короткую
 
             const maxCards = Math.floor(TOTAL_CARDS / playerCount);
 
@@ -282,6 +285,17 @@ class OnlineGame {
         // ✅ КЛАССИКА — паттерн: рост → плато → спад
         if (mode === GameMode.CLASSIC) {
             if (playerCount < 2) return 1;
+
+            if (playerCount < 3) {
+                // ✅ КЛАССИКА — паттерн 1→2→3→4→5→6→5→4→3→2→1
+                if (mode === GameMode.CLASSIC) {
+                    if (roundNumber < 6) {
+                        return roundNumber + 1;  // 1, 2, 3, 4, 5, 6
+                    } else {
+                        return 11 - roundNumber;  // 5, 4, 3, 2, 1
+                    }
+                }
+            }
 
             const maxCards = Math.floor(TOTAL_CARDS / playerCount);
             const ascendingRounds = maxCards - 1;  // раунды 0..(maxCards-2): карты 1..(maxCards-1)
@@ -802,11 +816,6 @@ class OnlineGame {
                 this.currentModeIdx++;
                 this.modeRoundCount = 0;
                 this.actualRounds = this.getMaxRounds();
-
-                if (this.deck) {
-                    this.deck.dealtHistory = [];
-                    console.log('🔄 Баланс колоды сброшен для нового режима');
-                }
 
                 console.log(`🎉 Смена режима: ${this.getCurrentMode().name} (${this.actualRounds} раундов)`);
             } else {
