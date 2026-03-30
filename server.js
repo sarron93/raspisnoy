@@ -64,8 +64,8 @@ const GameMode = {
 
 const CAMPAIGN_MODES = [
     GameMode.CLASSIC,
-    GameMode.MISER,
     GameMode.NO_TRUMP,
+    GameMode.MISER,
     GameMode.BLIND,
     GameMode.KHAPKI
 ];
@@ -96,177 +96,66 @@ class Deck {
     constructor() {
         this.cards = [];
         this.frequencies = [];
-        this.dealtHistory = []; // История выданных карт
-        this.maxHistory = 20;   // Размер истории для балансировки
-        this.baseFrequency = 1; // Базовый вес
-        this.boostFactor = 1.5; // Множитель усиления "забытых" карт
-        this.penaltyFactor = 0.7; // Множитель ослабления "частых" карт
 
         this.createDeck();
     }
 
     createDeck() {
         this.cards = [];
-        this.frequencies = [];
-        this.dealtHistory = [];
 
         for (let suit of SUITS) {
             for (let rank of RANKS) {
                 const isSixSpades = (suit === '♠' && rank === '6');
                 const card = new Card(suit, rank, isSixSpades);
                 this.cards.push(card);
-                this.frequencies.push(this.baseFrequency);
             }
         }
         this.shuffle();
     }
 
-    /**
-     * 🎲 Динамическая балансировка частот перед тасованием
-     * - Увеличивает вес карт, которые давно не выдавались
-     * - Уменьшает вес карт, которые выдавались недавно
-     */
-    rebalanceFrequencies() {
-        // ✅ Считаем, сколько раз каждая карта была в истории
-        const cardUsage = new Map();
-
-        for (const cardKey of this.dealtHistory) {
-            cardUsage.set(cardKey, (cardUsage.get(cardKey) || 0) + 1);
-        }
-
-        // ✅ Корректируем частоты
-        for (let i = 0; i < this.cards.length; i++) {
-            const card = this.cards[i];
-            const cardKey = this.getCardKey(card);
-            const usage = cardUsage.get(cardKey) || 0;
-
-            if (usage === 0) {
-                // Карта давно не выдавалась — повышаем шанс
-                this.frequencies[i] = this.baseFrequency * this.boostFactor;
-            } else if (usage >= 3) {
-                // Карта выдавалась слишком часто — понижаем шанс
-                this.frequencies[i] = this.baseFrequency * this.penaltyFactor;
-            } else {
-                // Нормальная частота
-                this.frequencies[i] = this.baseFrequency;
-            }
-
-            // ✅ Гарантируем минимальный вес > 0
-            this.frequencies[i] = Math.max(0.1, this.frequencies[i]);
-        }
-
-        console.log(`📊 Балансировка частот: ${cardUsage.size} уникальных карт в истории`);
-    }
-
-    /**
-     * 🔑 Генерирует уникальный ключ для карты
-     */
-    getCardKey(card) {
-        return `${card.suit}-${card.rank}-${card.isSixSpades ? 'joker' : 'normal'}`;
-    }
-
-    /**
-     * 🃏 Добавляет карту в историю выданных
-     */
-    recordCardDealt(card) {
-        const cardKey = this.getCardKey(card);
-        this.dealtHistory.unshift(cardKey); // Добавляем в начало
-
-        // ✅ Ограничиваем размер истории
-        if (this.dealtHistory.length > this.maxHistory) {
-            this.dealtHistory.pop();
-        }
-    }
-
-    /**
-     * 🔀 Взвешенное тасование с балансировкой
-     */
     shuffle() {
         if (!Array.isArray(this.cards) || this.cards.length === 0) {
             console.error('❌ Invalid cards array');
             return;
         }
 
-        // ✅ Сначала балансируем частоты
-        this.rebalanceFrequencies();
+        console.log('🔀 Двойная тасовка: разрез + Fisher-Yates...');
 
-        console.log('🔀 Тасуем карты с балансировкой...');
+        // 🎴 Этап 1: «Разрез» колоды и перемешивание половин
+        const mid = Math.floor(this.cards.length / 2);
+        const left = this.cards.slice(0, mid);
+        const right = this.cards.slice(mid);
 
-        // ✅ Алгоритм Fisher-Yates с весами
-        for (let i = this.cards.length - 1; i > 0; i--) {
-            // ✅ Считаем суммарный вес оставшихся карт
-            let totalWeight = 0;
-            for (let j = 0; j <= i; j++) {
-                totalWeight += this.frequencies[j];
-            }
+        // Перемешиваем каждую половину отдельно
+        this._fisherYates(left);
+        this._fisherYates(right);
 
-            // ✅ Выбираем случайный индекс с учётом весов
-            let randomValue = Math.random() * totalWeight;
-            let cumulativeWeight = 0;
-
-            for (let j = 0; j <= i; j++) {
-                cumulativeWeight += this.frequencies[j];
-                if (randomValue < cumulativeWeight) {
-                    // ✅ Меняем местами карты И их частоты
-                    [this.cards[i], this.cards[j]] = [this.cards[j], this.cards[i]];
-                    [this.frequencies[i], this.frequencies[j]] = [this.frequencies[j], this.frequencies[i]];
-                    break;
-                }
-            }
+        // Складываем обратно с чередованием
+        this.cards = [];
+        for (let i = 0; i < Math.max(left.length, right.length); i++) {
+            if (i < right.length) this.cards.push(right[i]);
+            if (i < left.length) this.cards.push(left[i]);
         }
 
-        console.log('✅ Карты растасованы');
+        // 🎲 Этап 2: Финальная тасовка Fisher-Yates
+        this._fisherYates(this.cards);
+
+        console.log('✅ Карты растасованы (комбинированный метод)');
+    }
+
+    // Вспомогательный метод для тасовки любого массива
+    _fisherYates(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
     }
 
     /**
      * 🎴 Выдаёт карты игроку с записью в историю
      */
-    deal(numCards) {
-        const dealt = this.cards.splice(0, numCards);
-        const dealtFreqs = this.frequencies.splice(0, numCards);
-
-        // ✅ Записываем выданные карты в историю
-        for (const card of dealt) {
-            this.recordCardDealt(card);
-        }
-
-        // ✅ Сбрасываем частоты выданных карт к базовым (они вернутся в колоду позже)
-        for (let i = 0; i < dealtFreqs.length; i++) {
-            dealtFreqs[i] = this.baseFrequency;
-        }
-
-        return dealt;
-    }
-
-    /**
-     * ♻️ Возвращает карты в колоду (для следующего раунда)
-     */
-    returnCards(cards) {
-        for (const card of cards) {
-            this.cards.push(card);
-            this.frequencies.push(this.baseFrequency);
-        }
-    }
-
-    size() {
-        return this.cards.length;
-    }
-
-    /**
-     * 📊 Статистика для отладки
-     */
-    getStats() {
-        const avgFreq = this.frequencies.reduce((a, b) => a + b, 0) / this.frequencies.length;
-        const minFreq = Math.min(...this.frequencies);
-        const maxFreq = Math.max(...this.frequencies);
-
-        return {
-            totalCards: this.cards.length,
-            avgFrequency: avgFreq.toFixed(2),
-            minFrequency: minFreq.toFixed(2),
-            maxFrequency: maxFreq.toFixed(2),
-            historySize: this.dealtHistory.length
-        };
+    deal() {
+        return this.cards.pop();
     }
 }
 
@@ -435,13 +324,27 @@ class OnlineGame {
             this.cardsPerRound = Math.floor(TOTAL_CARDS / this.players.length);
         }
 
-        this.players.forEach(p => {
+        // ✅ Выбираем случайную карту из колоды как козырь
+        const trumpIndex = Math.floor(Math.random() * TOTAL_CARDS);
+        this.trumpCard = this.deck.cards[trumpIndex];
+
+        for (let i = 0; i < this.cardsPerRound; i ++) {
+            this.players.forEach(p => {
+                p.hand.push(this.deck.deal())
+                p.bid = -1;
+                p.tricks = 0;
+                p.hasBid = false;
+                console.log(`🃏 ${p.name} получил ${p.hand.length} карт`);
+            });
+        }
+
+        /*this.players.forEach(p => {
             p.hand = this.deck.deal(this.cardsPerRound);
             p.bid = -1;
             p.tricks = 0;
             p.hasBid = false;
             console.log(`🃏 ${p.name} получил ${p.hand.length} карт`);
-        });
+        });*/
 
         // ✅ ГАРАНТИРУЕМ ДЖОКЕР В ТЕСТ-РЕЖИМЕ
         this.ensureJokerInDeal();
@@ -450,10 +353,6 @@ class OnlineGame {
         const modeName = mode.name;
         console.log(`МОД ${modeName}`);
         if (modeName !== '🃏 Бескозырка') {
-            // ✅ Выбираем случайную карту из колоды как козырь
-            const trumpIndex = Math.floor(Math.random() * this.deck.cards.length);
-            this.trumpCard = this.deck.cards[trumpIndex];
-
             if (this.trumpCard.suit === '♠') {
                 // ✅ Если пика — козыря нет (особое правило)
                 this.trumpSuit = null;
