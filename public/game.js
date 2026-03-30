@@ -476,7 +476,6 @@ class OnlinePokerGame {
         <span>|</span>
         <span>🃏 ${this.gameState.cardsPerRound}</span>
         <span>|</span>
-        <span>${this.gameState.trumpSuit ? `${this.gameState.trumpSuit}` : '🚫'}</span>
         <span>${SUITS_VIEW_MAP[this.gameState.trumpSuit] || '🚫'}</span>
         ${this.gameState.testMode ? '<span style="color: var(--accent);">🧪 ТЕСТ</span>' : ''}
     `;
