@@ -119,36 +119,17 @@ class Deck {
             return;
         }
 
-        console.log('🔀 Двойная тасовка: разрез + Fisher-Yates...');
+        console.log('🔀 Двойная тасовка...');
 
-        // 🎴 Этап 1: «Разрез» колоды и перемешивание половин
-        const mid = Math.floor(this.cards.length / 2);
-        const left = this.cards.slice(0, mid);
-        const right = this.cards.slice(mid);
-
-        // Перемешиваем каждую половину отдельно
-        this._fisherYates(left);
-        this._fisherYates(right);
-
-        // Складываем обратно с чередованием
-        this.cards = [];
-        for (let i = 0; i < Math.max(left.length, right.length); i++) {
-            if (i < right.length) this.cards.push(right[i]);
-            if (i < left.length) this.cards.push(left[i]);
+        // 🔁 Выполняем тасовку дважды
+        for (let pass = 0; pass < 2; pass++) {
+            for (let i = this.cards.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [this.cards[i], this.cards[j]] = [this.cards[j], this.cards[i]];
+            }
         }
 
-        // 🎲 Этап 2: Финальная тасовка Fisher-Yates
-        this._fisherYates(this.cards);
-
-        console.log('✅ Карты растасованы (комбинированный метод)');
-    }
-
-    // Вспомогательный метод для тасовки любого массива
-    _fisherYates(array) {
-        for (let i = array.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [array[i], array[j]] = [array[j], array[i]];
-        }
+        console.log('✅ Карты растасованы (2 прохода)');
     }
 
     /**
