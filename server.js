@@ -255,38 +255,52 @@ class OnlineGame {
     getMaxRounds() {
         const mode = this.getCurrentMode();
 
-        // ✅ КЛАССИКА — всегда 11 раундов
+        // ✅ КЛАССИКА — динамический расчет раундов
         if (mode === GameMode.CLASSIC) {
-            return 11;
+            const playerCount = this.players.length;
+            if (playerCount < 2) return 13; // fallback для 1 игрока
+
+            const maxCards = Math.floor(TOTAL_CARDS / playerCount);
+
+            // 📐 Формула: рост + плато + спад
+            // рост: (maxCards - 1) раундов (от 1 до maxCards-1)
+            // плато: playerCount раундов на maxCards
+            // спад: (maxCards - 1) раундов (от maxCards-1 до 1)
+            const totalRounds = 2 * (maxCards - 1) + playerCount;
+
+            console.log(`🎯 Классика: ${playerCount} игроков, макс. карт: ${maxCards}, всего раундов: ${totalRounds}`);
+            return totalRounds;
         }
 
-        // ✅ ОСТАЛЬНЫЕ РЕЖИМЫ — количество раундов = количеству игроков
-        const playerCount = this.players.length;
-
-        // ✅ Минимум 2 игрока, максимум 4
-        if (playerCount < 2) return 2;
-        if (playerCount > 4) return 4;
-
-        return playerCount;
+        return this.players.length;
     }
 
     getCardsPerRound(roundNumber) {
         const mode = this.getCurrentMode();
         const playerCount = this.players.length;
 
-        // ✅ КЛАССИКА — паттерн 1→2→3→4→5→6→5→4→3→2→1
+        // ✅ КЛАССИКА — паттерн: рост → плато → спад
         if (mode === GameMode.CLASSIC) {
-            if (roundNumber < 6) {
-                return roundNumber + 1;  // 1, 2, 3, 4, 5, 6
+            if (playerCount < 2) return 1;
+
+            const maxCards = Math.floor(TOTAL_CARDS / playerCount);
+            const ascendingRounds = maxCards - 1;  // раунды 0..(maxCards-2): карты 1..(maxCards-1)
+            const plateauRounds = playerCount;      // раунды на плато: карты = maxCards
+
+            if (roundNumber < ascendingRounds) {
+                // ✅ Фаза РОСТА: 1, 2, 3, ..., maxCards-1
+                return roundNumber + 1;
+            } else if (roundNumber < ascendingRounds + plateauRounds) {
+                // ✅ Фаза ПЛАТО: maxCards, maxCards, ... (playerCount раз)
+                return maxCards;
             } else {
-                return 11 - roundNumber;  // 5, 4, 3, 2, 1
+                // ✅ Фаза СПАДА: maxCards-1, maxCards-2, ..., 1
+                const descendingIndex = roundNumber - (ascendingRounds + plateauRounds);
+                return maxCards - 1 - descendingIndex;
             }
         }
 
-        // ✅ ОСТАЛЬНЫЕ РЕЖИМЫ — 36 карт / количество игроков
-        // Пример: 2 игрока = 18 карт на раунд, 2 раунда
-        //         3 игрока = 12 карт на раунд, 3 раунда
-        //         4 игрока = 9 карт на раунд, 4 раунда
+        // ✅ ОСТАЛЬНЫЕ РЕЖИМЫ — фиксированное количество карт
         return Math.floor(TOTAL_CARDS / playerCount);
     }
 
@@ -316,8 +330,10 @@ class OnlineGame {
 
         this.deck = new Deck();
 
+        // ✅ РАСЧЁТ КАРТ ДЛЯ ТЕКУЩЕГО РАУНДА (используем modeRoundCount)
         this.cardsPerRound = this.getCardsPerRound(this.modeRoundCount);
 
+        // ✅ ПРОВЕРКА ЧТО КАРТ ХВАТАЕТ
         const totalCardsNeeded = this.cardsPerRound * this.players.length;
         if (totalCardsNeeded > TOTAL_CARDS) {
             console.error(`❌ Не хватает карт! Нужно ${totalCardsNeeded}, есть ${TOTAL_CARDS}`);
@@ -328,37 +344,36 @@ class OnlineGame {
         const trumpIndex = Math.floor(Math.random() * TOTAL_CARDS);
         this.trumpCard = this.deck.cards[trumpIndex];
 
-        for (let i = 0; i < this.cardsPerRound; i ++) {
+        // ✅ РАЗДАЧА КАРТ (по одной за ход для лучшей балансировки)
+        for (let i = 0; i < this.cardsPerRound; i++) {
             this.players.forEach(p => {
-                p.hand.push(this.deck.deal())
+                const card = this.deck.deal();
+                if (card) {
+                    p.hand.push(card);
+                }
                 p.bid = -1;
                 p.tricks = 0;
                 p.hasBid = false;
-                console.log(`🃏 ${p.name} получил ${p.hand.length} карт`);
             });
         }
 
-        /*this.players.forEach(p => {
-            p.hand = this.deck.deal(this.cardsPerRound);
-            p.bid = -1;
-            p.tricks = 0;
-            p.hasBid = false;
+        // ✅ ЛОГИРОВАНИЕ РАЗДАЧИ
+        this.players.forEach(p => {
             console.log(`🃏 ${p.name} получил ${p.hand.length} карт`);
-        });*/
+        });
 
         // ✅ ГАРАНТИРУЕМ ДЖОКЕР В ТЕСТ-РЕЖИМЕ
         this.ensureJokerInDeal();
 
-        // ✅ ИСПРАВЛЕННОЕ ОПРЕДЕЛЕНИЕ КОЗЫРЯ — ПРОВЕРКА ПО ИМЕНИ РЕЖИМА
+        // ✅ ОПРЕДЕЛЕНИЕ КОЗЫРЯ
         const modeName = mode.name;
-        console.log(`МОД ${modeName}`);
         if (modeName !== '🃏 Бескозырка') {
-            if (this.trumpCard.suit === '♠') {
-                // ✅ Если пика — козыря нет (особое правило)
+            // ✅ Козырь уже выбран при создании колоды (из полной колоды до тасовки)
+            if (this.trumpCard && this.trumpCard.suit === '♠') {
                 this.trumpSuit = null;
                 this.trumpCard = null;
                 console.log(`🚫 Козырь: нет (выпала пика)`);
-            } else {
+            } else if (this.trumpCard) {
                 this.trumpSuit = this.trumpCard.suit;
                 console.log(`🂡 Козырь: ${this.trumpSuit} (карта: ${this.trumpCard.rank}${this.trumpCard.suit})`);
             }
@@ -374,13 +389,18 @@ class OnlineGame {
         }
         this.currentPlayerIdx = 0;
 
+        // ✅ ЛОГИРОВАНИЕ НОМЕРА РАУНДА
+        console.log(`🎴 === РАУНД ${this.modeRoundCount + 1} / ${this.actualRounds} ===`);
+        console.log(`🎯 Режим: ${mode.name} (индекс: ${this.currentModeIdx})`);
+        console.log(`🃏 Карт на игрока: ${this.cardsPerRound}`);
+
         if (mode.hasBidding) {
             this.gameState = 'bidding';
-            console.log(`🎴 Раунд ${this.modeRoundCount + 1}/${this.actualRounds}: ${this.cardsPerRound} карт, козырь: ${this.trumpSuit || 'нет'} (ТОРГОВЛЯ)`);
+            console.log(`🎴 ${this.cardsPerRound} карт, козырь: ${this.trumpSuit || 'нет'} (ТОРГОВЛЯ)`);
         } else {
             this.autoAssignBids();
             this.gameState = 'playing';
-            console.log(`🎴 Раунд ${this.modeRoundCount + 1}/${this.actualRounds}: ${this.cardsPerRound} карт, козырь: ${this.trumpSuit || 'нет'} (БЕЗ ТОРГОВЛИ)`);
+            console.log(`🎴 ${this.cardsPerRound} карт, козырь: ${this.trumpSuit || 'нет'} (БЕЗ ТОРГОВЛИ)`);
         }
 
         return this.getGameState();
