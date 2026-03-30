@@ -258,7 +258,10 @@ class OnlineGame {
         // ✅ КЛАССИКА — динамический расчет раундов
         if (mode === GameMode.CLASSIC) {
             const playerCount = this.players.length;
-            if (playerCount < 3) return 11; // fallback для 1 игрока
+
+            if (playerCount < 2) return 13; // fallback для 1 игрока
+
+            if (playerCount < 3) return 11; // двое играют короткую
 
             const maxCards = Math.floor(TOTAL_CARDS / playerCount);
 
