@@ -448,10 +448,10 @@ class OnlineGame {
 
         // ✅ ИСПРАВЛЕННОЕ ОПРЕДЕЛЕНИЕ КОЗЫРЯ — ПРОВЕРКА ПО ИМЕНИ РЕЖИМА
         const modeName = mode.name;
-
-        if (modeName !== '🃏 Бескозырка' && this.deck.size() > 0) {
+        console.log(`МОД ${modeName}`);
+        if (modeName !== '🃏 Бескозырка') {
             // ✅ Выбираем случайную карту из колоды как козырь
-            const trumpIndex = Math.floor(Math.random() * this.deck.size());
+            const trumpIndex = Math.floor(Math.random() * this.deck.cards.length);
             this.trumpCard = this.deck.cards[trumpIndex];
 
             if (this.trumpCard.suit === '♠') {
