@@ -895,8 +895,6 @@ class OnlinePokerGame {
             ruleText = '😈 МИЗЕР! Старайтесь НЕ брать взятки!';
         } else if (mode === '🔥 Хапки') {
             ruleText = '🔥 ХАПКИ! Берите как можно больше взяток!';
-        } else if (mode === '💰 Золотая') {
-            ruleText = '💰 ЗОЛОТАЯ! Очки удвоены!';
         }
 
         const cardsOnTableCount = this.gameState.cardsOnTable ? this.gameState.cardsOnTable.length : 0;

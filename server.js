@@ -45,14 +45,6 @@ const GameMode = {
         cardPattern: 'equal_distribution',
         hasBidding: true  // ✅ ТОРГОВЛЯ ЕСТЬ
     },
-    GOLDEN: {
-        name: '💰 Золотая',
-        fullDeck: true,
-        fixedRounds: null,
-        cardPattern: 'equal_distribution',
-        hasBidding: false,  // ❌ НЕТ ТОРГОВЛИ
-        autoBid: null
-    },
     BLIND: {
         name: '👁️ Слепая',
         fullDeck: true,
@@ -74,7 +66,6 @@ const CAMPAIGN_MODES = [
     GameMode.CLASSIC,
     GameMode.MISER,
     GameMode.NO_TRUMP,
-    GameMode.GOLDEN,
     GameMode.BLIND,
     GameMode.KHAPKI
 ];
@@ -443,23 +434,33 @@ class OnlineGame {
             p.bid = -1;
             p.tricks = 0;
             p.hasBid = false;
-            console.log(`🃏 ${p.name} получил ${p.hand.length} карт`);  // ✅ ЛОГ
+            console.log(`🃏 ${p.name} получил ${p.hand.length} карт`);
         });
 
         // ✅ ГАРАНТИРУЕМ ДЖОКЕР В ТЕСТ-РЕЖИМЕ
         this.ensureJokerInDeal();
 
-        if (mode !== GameMode.NO_TRUMP && this.deck.size() > 0) {
-            this.trumpCard = this.deck.cards[Math.floor(Math.random() * this.deck.size())];
+        // ✅ ИСПРАВЛЕННОЕ ОПРЕДЕЛЕНИЕ КОЗЫРЯ — ПРОВЕРКА ПО ИМЕНИ РЕЖИМА
+        const modeName = mode.name;
+
+        if (modeName !== '🃏 Бескозырка' && this.deck.size() > 0) {
+            // ✅ Выбираем случайную карту из колоды как козырь
+            const trumpIndex = Math.floor(Math.random() * this.deck.size());
+            this.trumpCard = this.deck.cards[trumpIndex];
+
             if (this.trumpCard.suit === '♠') {
+                // ✅ Если пика — козыря нет (особое правило)
                 this.trumpSuit = null;
                 this.trumpCard = null;
+                console.log(`🚫 Козырь: нет (выпала пика)`);
             } else {
                 this.trumpSuit = this.trumpCard.suit;
+                console.log(`🂡 Козырь: ${this.trumpSuit} (карта: ${this.trumpCard.rank}${this.trumpCard.suit})`);
             }
         } else {
             this.trumpSuit = null;
             this.trumpCard = null;
+            console.log(`🚫 Козырь: нет (режим ${modeName})`);
         }
 
         this.biddingOrder = [];
@@ -833,7 +834,7 @@ class OnlineGame {
     endRound() {
         const mode = this.getCurrentMode();
         let multiplier = 1;
-        if ([GameMode.GOLDEN, GameMode.BLIND, GameMode.KHAPKI].includes(mode)) {
+        if ([GameMode.BLIND, GameMode.KHAPKI].includes(mode)) {
             multiplier = 2;
         }
 
