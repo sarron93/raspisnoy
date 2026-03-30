@@ -1,3 +1,12 @@
+const SUITS = ['♠', '♥', '♦', '♣'];
+
+const SUITS_VIEW_MAP = {
+  '♠': '♠️',
+  '♥': '♥️',
+  '♦': '♦️',
+  '♣': '♣️',
+};
+
 class OnlinePokerGame {
     constructor() {
         this.socket = io();
@@ -467,7 +476,8 @@ class OnlinePokerGame {
         <span>|</span>
         <span>🃏 ${this.gameState.cardsPerRound}</span>
         <span>|</span>
-        <span>${this.gameState.trumpSuit ? `🂡 ${this.gameState.trumpSuit}` : '🚫'}</span>
+        <span>${this.gameState.trumpSuit ? `${this.gameState.trumpSuit}` : '🚫'}</span>
+        <span>${SUITS_VIEW_MAP[this.gameState.trumpSuit] || '🚫'}</span>
         ${this.gameState.testMode ? '<span style="color: var(--accent);">🧪 ТЕСТ</span>' : ''}
     `;
 
@@ -495,7 +505,7 @@ class OnlinePokerGame {
 
         this.gameState.players.forEach((player, idx) => {
             const wrapper = document.createElement('div');
-            wrapper.className = `player-wrapper player-position-${idx}`;
+            wrapper.className = `player-wrapper player-position-${(this.playerIdx + idx) % this.gameState.players.length}`;
 
             if (idx === this.playerIdx) wrapper.classList.add('active');
             if (player.isDealer) wrapper.classList.add('dealer');
@@ -506,7 +516,6 @@ class OnlinePokerGame {
             // ✅ В СЛЕПОЙ — ПРОВЕРЯЕМ СДЕЛАЛ ЛИ ИГРОК СТАВКУ
             const mode = this.gameState.mode;
             const isBlind = mode === '👁️ Слепая';
-            const canSeeCards = !isBlind || player.hasBid || idx === this.playerIdx;
 
             // ✅ ДЛЯ ТЕКУЩЕГО ИГРОКА — ИСПОЛЬЗУЕМ this.myHand
             if (idx === this.playerIdx && this.myHand && this.myHand.length > 0) {
@@ -522,7 +531,7 @@ class OnlinePokerGame {
                         card,
                         cardIdx,
                         cardsClickable,
-                        validIndices.includes(cardIdx)
+                        validIndices.includes(cardIdx) || isBidding
                     );
                     fullHand.appendChild(miniCard);
                 });
@@ -534,18 +543,7 @@ class OnlinePokerGame {
                     cardCount.className = 'player-card-count';
                     cardCount.textContent = `👁️ ?`;
                     fullHand.appendChild(cardCount);
-                } else if (player.handLength > 0 && player.handLength <= 6) {
-                    for (let i = 0; i < player.handLength; i++) {
-                        const miniCard = document.createElement('div');
-                        miniCard.className = 'player-card-mini disabled';
-                        miniCard.innerHTML = `
-                        <span class="player-card-mini-rank">?</span>
-                        <span class="player-card-mini-suit">🂠</span>
-                    `;
-                        miniCard.style.cursor = 'not-allowed';
-                        fullHand.appendChild(miniCard);
-                    }
-                } else if (player.handLength > 6) {
+                } else {
                     const cardCount = document.createElement('div');
                     cardCount.className = 'player-card-count';
                     cardCount.textContent = `🃏${player.handLength}`;
@@ -592,15 +590,19 @@ class OnlinePokerGame {
             <span class="player-card-mini-suit">${suit}</span>
         `;
 
-        if (!isClickable || !isValid) {
+        if(!isValid){
             cardDiv.classList.add('disabled');
+        }
+
+        if (!isClickable || !isValid) {
             cardDiv.title = isClickable ? 'Нельзя ходить этой картой' : 'Ждите своего хода';
             cardDiv.style.cursor = 'not-allowed';
-        } else {
-            cardDiv.onclick = () => this.playCard(idx);
-            cardDiv.style.cursor = 'pointer';
-            cardDiv.title = 'Нажмите чтобы походить';
-        }
+            return cardDiv;
+        } 
+        cardDiv.onclick = () => this.playCard(idx);
+        cardDiv.style.cursor = 'pointer';
+        cardDiv.title = 'Нажмите чтобы походить';
+        
 
         return cardDiv;
     }
