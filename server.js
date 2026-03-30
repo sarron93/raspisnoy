@@ -45,14 +45,6 @@ const GameMode = {
         cardPattern: 'equal_distribution',
         hasBidding: true  // ✅ ТОРГОВЛЯ ЕСТЬ
     },
-    GOLDEN: {
-        name: '💰 Золотая',
-        fullDeck: true,
-        fixedRounds: null,
-        cardPattern: 'equal_distribution',
-        hasBidding: false,  // ❌ НЕТ ТОРГОВЛИ
-        autoBid: null
-    },
     BLIND: {
         name: '👁️ Слепая',
         fullDeck: true,
@@ -72,9 +64,8 @@ const GameMode = {
 
 const CAMPAIGN_MODES = [
     GameMode.CLASSIC,
-    GameMode.MISER,
     GameMode.NO_TRUMP,
-    GameMode.GOLDEN,
+    GameMode.MISER,
     GameMode.BLIND,
     GameMode.KHAPKI
 ];
@@ -105,177 +96,66 @@ class Deck {
     constructor() {
         this.cards = [];
         this.frequencies = [];
-        this.dealtHistory = []; // История выданных карт
-        this.maxHistory = 20;   // Размер истории для балансировки
-        this.baseFrequency = 1; // Базовый вес
-        this.boostFactor = 1.5; // Множитель усиления "забытых" карт
-        this.penaltyFactor = 0.7; // Множитель ослабления "частых" карт
 
         this.createDeck();
     }
 
     createDeck() {
         this.cards = [];
-        this.frequencies = [];
-        this.dealtHistory = [];
 
         for (let suit of SUITS) {
             for (let rank of RANKS) {
                 const isSixSpades = (suit === '♠' && rank === '6');
                 const card = new Card(suit, rank, isSixSpades);
                 this.cards.push(card);
-                this.frequencies.push(this.baseFrequency);
             }
         }
         this.shuffle();
     }
 
-    /**
-     * 🎲 Динамическая балансировка частот перед тасованием
-     * - Увеличивает вес карт, которые давно не выдавались
-     * - Уменьшает вес карт, которые выдавались недавно
-     */
-    rebalanceFrequencies() {
-        // ✅ Считаем, сколько раз каждая карта была в истории
-        const cardUsage = new Map();
-
-        for (const cardKey of this.dealtHistory) {
-            cardUsage.set(cardKey, (cardUsage.get(cardKey) || 0) + 1);
-        }
-
-        // ✅ Корректируем частоты
-        for (let i = 0; i < this.cards.length; i++) {
-            const card = this.cards[i];
-            const cardKey = this.getCardKey(card);
-            const usage = cardUsage.get(cardKey) || 0;
-
-            if (usage === 0) {
-                // Карта давно не выдавалась — повышаем шанс
-                this.frequencies[i] = this.baseFrequency * this.boostFactor;
-            } else if (usage >= 3) {
-                // Карта выдавалась слишком часто — понижаем шанс
-                this.frequencies[i] = this.baseFrequency * this.penaltyFactor;
-            } else {
-                // Нормальная частота
-                this.frequencies[i] = this.baseFrequency;
-            }
-
-            // ✅ Гарантируем минимальный вес > 0
-            this.frequencies[i] = Math.max(0.1, this.frequencies[i]);
-        }
-
-        console.log(`📊 Балансировка частот: ${cardUsage.size} уникальных карт в истории`);
-    }
-
-    /**
-     * 🔑 Генерирует уникальный ключ для карты
-     */
-    getCardKey(card) {
-        return `${card.suit}-${card.rank}-${card.isSixSpades ? 'joker' : 'normal'}`;
-    }
-
-    /**
-     * 🃏 Добавляет карту в историю выданных
-     */
-    recordCardDealt(card) {
-        const cardKey = this.getCardKey(card);
-        this.dealtHistory.unshift(cardKey); // Добавляем в начало
-
-        // ✅ Ограничиваем размер истории
-        if (this.dealtHistory.length > this.maxHistory) {
-            this.dealtHistory.pop();
-        }
-    }
-
-    /**
-     * 🔀 Взвешенное тасование с балансировкой
-     */
     shuffle() {
         if (!Array.isArray(this.cards) || this.cards.length === 0) {
             console.error('❌ Invalid cards array');
             return;
         }
 
-        // ✅ Сначала балансируем частоты
-        this.rebalanceFrequencies();
+        console.log('🔀 Двойная тасовка: разрез + Fisher-Yates...');
 
-        console.log('🔀 Тасуем карты с балансировкой...');
+        // 🎴 Этап 1: «Разрез» колоды и перемешивание половин
+        const mid = Math.floor(this.cards.length / 2);
+        const left = this.cards.slice(0, mid);
+        const right = this.cards.slice(mid);
 
-        // ✅ Алгоритм Fisher-Yates с весами
-        for (let i = this.cards.length - 1; i > 0; i--) {
-            // ✅ Считаем суммарный вес оставшихся карт
-            let totalWeight = 0;
-            for (let j = 0; j <= i; j++) {
-                totalWeight += this.frequencies[j];
-            }
+        // Перемешиваем каждую половину отдельно
+        this._fisherYates(left);
+        this._fisherYates(right);
 
-            // ✅ Выбираем случайный индекс с учётом весов
-            let randomValue = Math.random() * totalWeight;
-            let cumulativeWeight = 0;
-
-            for (let j = 0; j <= i; j++) {
-                cumulativeWeight += this.frequencies[j];
-                if (randomValue < cumulativeWeight) {
-                    // ✅ Меняем местами карты И их частоты
-                    [this.cards[i], this.cards[j]] = [this.cards[j], this.cards[i]];
-                    [this.frequencies[i], this.frequencies[j]] = [this.frequencies[j], this.frequencies[i]];
-                    break;
-                }
-            }
+        // Складываем обратно с чередованием
+        this.cards = [];
+        for (let i = 0; i < Math.max(left.length, right.length); i++) {
+            if (i < right.length) this.cards.push(right[i]);
+            if (i < left.length) this.cards.push(left[i]);
         }
 
-        console.log('✅ Карты растасованы');
+        // 🎲 Этап 2: Финальная тасовка Fisher-Yates
+        this._fisherYates(this.cards);
+
+        console.log('✅ Карты растасованы (комбинированный метод)');
+    }
+
+    // Вспомогательный метод для тасовки любого массива
+    _fisherYates(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
     }
 
     /**
      * 🎴 Выдаёт карты игроку с записью в историю
      */
-    deal(numCards) {
-        const dealt = this.cards.splice(0, numCards);
-        const dealtFreqs = this.frequencies.splice(0, numCards);
-
-        // ✅ Записываем выданные карты в историю
-        for (const card of dealt) {
-            this.recordCardDealt(card);
-        }
-
-        // ✅ Сбрасываем частоты выданных карт к базовым (они вернутся в колоду позже)
-        for (let i = 0; i < dealtFreqs.length; i++) {
-            dealtFreqs[i] = this.baseFrequency;
-        }
-
-        return dealt;
-    }
-
-    /**
-     * ♻️ Возвращает карты в колоду (для следующего раунда)
-     */
-    returnCards(cards) {
-        for (const card of cards) {
-            this.cards.push(card);
-            this.frequencies.push(this.baseFrequency);
-        }
-    }
-
-    size() {
-        return this.cards.length;
-    }
-
-    /**
-     * 📊 Статистика для отладки
-     */
-    getStats() {
-        const avgFreq = this.frequencies.reduce((a, b) => a + b, 0) / this.frequencies.length;
-        const minFreq = Math.min(...this.frequencies);
-        const maxFreq = Math.max(...this.frequencies);
-
-        return {
-            totalCards: this.cards.length,
-            avgFrequency: avgFreq.toFixed(2),
-            minFrequency: minFreq.toFixed(2),
-            maxFrequency: maxFreq.toFixed(2),
-            historySize: this.dealtHistory.length
-        };
+    deal() {
+        return this.cards.pop();
     }
 }
 
@@ -307,7 +187,6 @@ class OnlineGame {
     }
 
     // ✅ АВТОМАТИЧЕСКОЕ НАЗНАЧЕНИЕ ЗАЯВОК
-    // ✅ АВТОМАТИЧЕСКОЕ НАЗНАЧЕНИЕ ЗАЯВОК (для режимов без торговли)
     autoAssignBids() {
         const mode = this.getCurrentMode();
 
@@ -315,8 +194,12 @@ class OnlineGame {
             if (mode.autoBid === 0) {
                 // 😈 МИЗЕР — все обязаны 0
                 p.bid = 0;
+            } else if (mode === GameMode.KHAPKI) {
+                // 🔥 ХАПКИ — заявки не важны, ставим 0 для отображения
+                p.bid = 0;
+                console.log(`🔥 ${p.name}: Хапки — заявки не важны`);
             } else if (mode.autoBid === null) {
-                // 💰🔥 ЗОЛОТАЯ, ХАПКИ — случайная заявка от 0 до cardsPerRound
+                // 🃏 БЕСКОЗЫРКА — случайная заявка
                 p.bid = Math.floor(Math.random() * (this.cardsPerRound + 1));
             } else {
                 p.bid = mode.autoBid;
@@ -413,6 +296,9 @@ class OnlineGame {
         }
 
         // ✅ РАСЧЁТ ФАКТИЧЕСКОГО КОЛИЧЕСТВА РАУНДОВ
+        // ✅ ЯВНЫЙ СБРОС СЧЁТЧИКОВ ПРИ СТАРТЕ ИГРЫ
+        this.currentModeIdx = 0;  // ✅ Начинаем с Классики
+        this.modeRoundCount = 0;  // ✅ Первый раунд
         this.actualRounds = this.getMaxRounds();
         this.modeRoundCount = 0;
 
@@ -438,28 +324,48 @@ class OnlineGame {
             this.cardsPerRound = Math.floor(TOTAL_CARDS / this.players.length);
         }
 
-        this.players.forEach(p => {
+        // ✅ Выбираем случайную карту из колоды как козырь
+        const trumpIndex = Math.floor(Math.random() * TOTAL_CARDS);
+        this.trumpCard = this.deck.cards[trumpIndex];
+
+        for (let i = 0; i < this.cardsPerRound; i ++) {
+            this.players.forEach(p => {
+                p.hand.push(this.deck.deal())
+                p.bid = -1;
+                p.tricks = 0;
+                p.hasBid = false;
+                console.log(`🃏 ${p.name} получил ${p.hand.length} карт`);
+            });
+        }
+
+        /*this.players.forEach(p => {
             p.hand = this.deck.deal(this.cardsPerRound);
             p.bid = -1;
             p.tricks = 0;
             p.hasBid = false;
-            console.log(`🃏 ${p.name} получил ${p.hand.length} карт`);  // ✅ ЛОГ
-        });
+            console.log(`🃏 ${p.name} получил ${p.hand.length} карт`);
+        });*/
 
         // ✅ ГАРАНТИРУЕМ ДЖОКЕР В ТЕСТ-РЕЖИМЕ
         this.ensureJokerInDeal();
 
-        if (mode !== GameMode.NO_TRUMP && this.deck.size() > 0) {
-            this.trumpCard = this.deck.cards[Math.floor(Math.random() * this.deck.size())];
+        // ✅ ИСПРАВЛЕННОЕ ОПРЕДЕЛЕНИЕ КОЗЫРЯ — ПРОВЕРКА ПО ИМЕНИ РЕЖИМА
+        const modeName = mode.name;
+        console.log(`МОД ${modeName}`);
+        if (modeName !== '🃏 Бескозырка') {
             if (this.trumpCard.suit === '♠') {
+                // ✅ Если пика — козыря нет (особое правило)
                 this.trumpSuit = null;
                 this.trumpCard = null;
+                console.log(`🚫 Козырь: нет (выпала пика)`);
             } else {
                 this.trumpSuit = this.trumpCard.suit;
+                console.log(`🂡 Козырь: ${this.trumpSuit} (карта: ${this.trumpCard.rank}${this.trumpCard.suit})`);
             }
         } else {
             this.trumpSuit = null;
             this.trumpCard = null;
+            console.log(`🚫 Козырь: нет (режим ${modeName})`);
         }
 
         this.biddingOrder = [];
@@ -833,14 +739,20 @@ class OnlineGame {
     endRound() {
         const mode = this.getCurrentMode();
         let multiplier = 1;
-        if ([GameMode.GOLDEN, GameMode.BLIND, GameMode.KHAPKI].includes(mode)) {
+
+        // ✅ Проверка множителя (Слепая и Хапки)
+        if ([GameMode.BLIND, GameMode.KHAPKI].includes(mode)) {
             multiplier = 2;
         }
 
         this.players.forEach(p => {
             let points = 0;
 
-            if (mode === GameMode.MISER) {
+            // 🔥 ХАПКИ — каждая взятка = +20 очков (без сравнения с заявкой)
+            if (mode === GameMode.KHAPKI) {
+                points = p.tricks * 20;  // ✅ Просто 20 очков за каждую взятку
+                console.log(`🔥 ${p.name}: Хапки — ${p.tricks} взяток × 20 = ${points}`);
+            }else if (mode === GameMode.MISER) {
                 if (p.tricks === 0) {
                     points = 20 * multiplier;
                     console.log(`🎯 ${p.name}: Мизер сыграл! +${points}`);
@@ -915,8 +827,8 @@ class OnlineGame {
                 score: p.score,
                 bid: p.hasBid ? p.bid : null,
                 tricks: p.tricks,
-                hasBid: p.hasBid,
-                handLength: p.hand.length,
+                hasBid: p.hasBid,  // ✅ ВАЖНО: для проверки в клиенте
+                handLength: p.hasBid ? p.hand.length : 0,  // ✅ Скрываем количество карт до ставки
                 isDealer: idx === this.dealerIdx
             })),
             currentPlayer: this.gameState === 'bidding' ? this.biddingOrder[this.currentPlayerIdx] : null,
@@ -940,8 +852,20 @@ class OnlineGame {
 
     getGameStateWithHand(playerIdx) {
         const state = this.getGameState();
-        state.hand = this.getPlayerHand(playerIdx);
-        console.log(`📤 Отправляем состояние игроку ${playerIdx}: ${state.hand.length} карт`);
+        const mode = this.getCurrentMode();
+        const player = this.players[playerIdx];
+
+        // ✅ В РЕЖИМЕ СЛЕПАЯ — скрываем карты пока игрок не сделал ставку
+        if (mode.name === '👁️ Слепая' && !player.hasBid) {
+            // ✅ Возвращаем пустую руку пока ставка не сделана
+            state.hand = [];
+            console.log(`👁️ Игрок ${playerIdx} (${player.name}): карты скрыты (нет ставки)`);
+        } else {
+            // ✅ Обычная выдача руки
+            state.hand = this.getPlayerHand(playerIdx);
+            console.log(`📤 Отправляем состояние игроку ${playerIdx}: ${state.hand.length} карт`);
+        }
+
         return state;
     }
 

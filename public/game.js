@@ -110,7 +110,14 @@ class OnlinePokerGame {
         this.socket.on('bidMade', (state) => {
             console.log('📢 Заявка сделана');
             this.gameState = state;
-            this.requestGameState();
+
+            // ✅ В СЛЕПОЙ — после ставки запрашиваем состояние с рукой
+            if (this.gameState.mode === '👁️ Слепая' && this.gameState.players[this.playerIdx]?.hasBid) {
+                console.log('👁️ Ставка сделана — запрашиваем карты');
+                this.requestGameState();
+            } else {
+                this.requestGameState();
+            }
         });
 
         this.socket.on('cardPlayed', (state) => {
@@ -496,6 +503,12 @@ class OnlinePokerGame {
             const fullHand = document.createElement('div');
             fullHand.className = 'player-full-hand';
 
+            // ✅ В СЛЕПОЙ — ПРОВЕРЯЕМ СДЕЛАЛ ЛИ ИГРОК СТАВКУ
+            const mode = this.gameState.mode;
+            const isBlind = mode === '👁️ Слепая';
+            const canSeeCards = !isBlind || player.hasBid || idx === this.playerIdx;
+
+            // ✅ ДЛЯ ТЕКУЩЕГО ИГРОКА — ИСПОЛЬЗУЕМ this.myHand
             if (idx === this.playerIdx && this.myHand && this.myHand.length > 0) {
                 const isBidding = this.gameState.gameState === 'bidding';
                 const currentPlayerIdx = this.getCurrentPlayerIdx();
@@ -514,14 +527,21 @@ class OnlinePokerGame {
                     fullHand.appendChild(miniCard);
                 });
             } else {
-                if (player.handLength > 0 && player.handLength <= 6) {
+                // ✅ ДЛЯ ДРУГИХ ИГРОКОВ — ИСПОЛЬЗУЕМ handLength из gameState
+                if (isBlind && !player.hasBid) {
+                    // ✅ Скрываем количество карт пока ставка не сделана
+                    const cardCount = document.createElement('div');
+                    cardCount.className = 'player-card-count';
+                    cardCount.textContent = `👁️ ?`;
+                    fullHand.appendChild(cardCount);
+                } else if (player.handLength > 0 && player.handLength <= 6) {
                     for (let i = 0; i < player.handLength; i++) {
                         const miniCard = document.createElement('div');
                         miniCard.className = 'player-card-mini disabled';
                         miniCard.innerHTML = `
-                            <span class="player-card-mini-rank">?</span>
-                            <span class="player-card-mini-suit">🂠</span>
-                        `;
+                        <span class="player-card-mini-rank">?</span>
+                        <span class="player-card-mini-suit">🂠</span>
+                    `;
                         miniCard.style.cursor = 'not-allowed';
                         fullHand.appendChild(miniCard);
                     }
@@ -539,18 +559,18 @@ class OnlinePokerGame {
             playerCard.className = 'player-card';
 
             const avatarLetter = player.name.charAt(0).toUpperCase();
-            const bidText = player.bid !== null ? player.bid : '-';
+            const bidText = player.hasBid ? player.bid : '-';
 
             playerCard.innerHTML = `
-                <div class="player-avatar">${avatarLetter}</div>
-                <div class="player-name" title="${player.name}">${player.name}</div>
-                <div class="player-stats">
-                    <span class="score">💰${player.score}</span>
-                    <span class="tricks">🏆${player.tricks}</span>
-                    <span>📢${bidText}</span>
-                    <span>🃏${player.handLength}</span>
-                </div>
-            `;
+            <div class="player-avatar">${avatarLetter}</div>
+            <div class="player-name" title="${player.name}">${player.name}</div>
+            <div class="player-stats">
+                <span class="score">💰${player.score}</span>
+                <span class="tricks">🏆${player.tricks}</span>
+                <span>📢${bidText}</span>
+                <span>🃏${player.hasBid ? player.handLength : '?'}</span>
+            </div>
+        `;
 
             wrapper.appendChild(playerCard);
             area.appendChild(wrapper);
@@ -758,36 +778,47 @@ class OnlinePokerGame {
         }
 
         const mode = this.gameState.mode;
-        const isBlind = mode.includes('Слепая');
+        const isBlind = mode === '👁️ Слепая';
         const isBidding = this.gameState.gameState === 'bidding';
 
         // ✅ ПРАВИЛЬНОЕ ОПРЕДЕЛЕНИЕ ЧЕЙ ХОД
         const currentPlayerIdx = this.getCurrentPlayerIdx();
         const isMyTurn = currentPlayerIdx === this.playerIdx;
 
-        // ✅ ОТЛАДКА
-        console.log('🎨 updateControlArea:', {
-            gameState: this.gameState.gameState,
-            playerIdx: this.playerIdx,
-            currentPlayerIdx: currentPlayerIdx,
-            currentPlayer: this.gameState.currentPlayer,
-            trickLeader: this.gameState.trickLeader,
-            cardsOnTable: this.gameState.cardsOnTable?.length || 0,
-            isMyTurn: isMyTurn,
-            myHandLength: this.myHand?.length || 0
-        });
+        // ✅ В СЛЕПОЙ — ПРОВЕРЯЕМ СДЕЛАЛИ ЛИ МЫ СТАВКУ
+        const myPlayerData = this.gameState.players[this.playerIdx];
+        const hasMadeBid = myPlayerData?.hasBid || false;
 
-        // ✅ ПРОВЕРКА НАЛИЧИЯ РУКИ
+        // ✅ ПОКАЗЫВАЕМ ТОРГОВЛЮ ПЕРВОЙ (даже если рука пустая в Слепой!)
+        if (isBidding && isMyTurn) {
+            console.log('📢 Показываем торговлю');
+            this.showBiddingInterface(area);
+            return;
+        }
+
+        // ✅ ПРОВЕРКА НАЛИЧИЯ РУКИ (только если не торговля)
         if (!this.myHand || this.myHand.length === 0) {
             const msgDiv = document.createElement('div');
             msgDiv.className = 'message';
-            msgDiv.textContent = '⏳ Ожидание карт...';
+
+            if (isBlind && !hasMadeBid) {
+                msgDiv.textContent = '👁️ СЛЕПАЯ — сделайте ставку чтобы увидеть карты!';
+            } else {
+                msgDiv.textContent = '⏳ Ожидание карт...';
+            }
+
             area.appendChild(msgDiv);
             console.log('⚠️ myHand пустой!');
             return;
         }
 
-        if (isBlind && this.myHand && this.myHand.length > 0) {
+        // ✅ В СЛЕПОЙ — СКРЫВАЕМ КАРТЫ ДО СТАВКИ
+        if (isBlind && !hasMadeBid) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message warning';
+            msgDiv.innerHTML = `👁️ СЛЕПАЯ — карты скрыты!<br>Сделайте ставку чтобы увидеть свои карты`;
+            area.appendChild(msgDiv);
+        } else if (isBlind && this.myHand && this.myHand.length > 0) {
             const msgDiv = document.createElement('div');
             msgDiv.className = 'message warning';
             msgDiv.innerHTML = `👁️ СЛЕПАЯ — карты скрыты!<br>У вас карт: ${this.myHand.length}`;
@@ -894,9 +925,7 @@ class OnlinePokerGame {
         if (mode === '😈 Мизер') {
             ruleText = '😈 МИЗЕР! Старайтесь НЕ брать взятки!';
         } else if (mode === '🔥 Хапки') {
-            ruleText = '🔥 ХАПКИ! Берите как можно больше взяток!';
-        } else if (mode === '💰 Золотая') {
-            ruleText = '💰 ЗОЛОТАЯ! Очки удвоены!';
+            ruleText = '🔥 ХАПКИ! Берите как можно больше взяток! (+20 за каждую)';
         }
 
         const cardsOnTableCount = this.gameState.cardsOnTable ? this.gameState.cardsOnTable.length : 0;
