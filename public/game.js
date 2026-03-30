@@ -789,7 +789,14 @@ class OnlinePokerGame {
         const myPlayerData = this.gameState.players[this.playerIdx];
         const hasMadeBid = myPlayerData?.hasBid || false;
 
-        // ✅ ПРОВЕРКА НАЛИЧИЯ РУКИ
+        // ✅ ПОКАЗЫВАЕМ ТОРГОВЛЮ ПЕРВОЙ (даже если рука пустая в Слепой!)
+        if (isBidding && isMyTurn) {
+            console.log('📢 Показываем торговлю');
+            this.showBiddingInterface(area);
+            return;
+        }
+
+        // ✅ ПРОВЕРКА НАЛИЧИЯ РУКИ (только если не торговля)
         if (!this.myHand || this.myHand.length === 0) {
             const msgDiv = document.createElement('div');
             msgDiv.className = 'message';
@@ -805,6 +812,7 @@ class OnlinePokerGame {
             return;
         }
 
+        // ✅ В СЛЕПОЙ — СКРЫВАЕМ КАРТЫ ДО СТАВКИ
         if (isBlind && !hasMadeBid) {
             const msgDiv = document.createElement('div');
             msgDiv.className = 'message warning';
