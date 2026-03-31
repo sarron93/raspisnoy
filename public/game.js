@@ -7,6 +7,13 @@ const SUITS_VIEW_MAP = {
   '♣': '♣️',
 };
 
+const SUITS_SORT_VALUE = {
+  '♠': 300,
+  '♥': 200,
+  '♦': 100,
+  '♣': 0,
+};
+
 class OnlinePokerGame {
     constructor() {
         this.socket = io();
@@ -133,7 +140,7 @@ class OnlinePokerGame {
             console.log('🃏 Карта сыграна');
 
             if (state.hand !== undefined) {
-                this.myHand = this._validateHand(state.hand);
+                this.myHand = state.hand;
             }
 
             this.gameState = state;
@@ -171,7 +178,7 @@ class OnlinePokerGame {
             console.log('🃏 Карт в руке:', state.hand?.length || 0);
 
             this.gameState = state;
-            this.myHand = this._validateHand(state.hand || []);
+            this.myHand = state.hand.sort((a, b) => this.getSortValue(b) - this.getSortValue(a)) || [];
 
             console.log('✅ myHand обновлён:', this.myHand.length, 'карт');
 
@@ -276,46 +283,13 @@ class OnlinePokerGame {
             }
         });
     }
+    
+    getSortValue(card) {
+        const value = card.value + SUITS_SORT_VALUE[card.suit];
+        const trumpValue = card.suit === this.gameState.trumpSuit ? 1000 : 0;
+        const jokerValue =  card.isSixSpades ? 2000 : 0;
 
-    /**
-     * ✅ ПРОВЕРКА И ОЧИСТКА РУКИ ОТ ДУБЛИКАТОВ И ОШИБОК
-     */
-    _validateHand(hand) {
-        // Если рука не массив — возвращаем пустую
-        if (!Array.isArray(hand)) {
-            console.warn('⚠️ Рука не массив, очищаем');
-            return [];
-        }
-
-        const seen = new Set();
-        const valid = [];
-
-        for (const card of hand) {
-            // Пропускаем пустые или невалидные карты
-            if (!card || !card.suit || !card.rank) {
-                console.warn('⚠️ Невалидная карта удалена:', card);
-                continue;
-            }
-
-            // Создаём уникальный ключ для проверки дублей
-            const key = `${card.suit}${card.rank}${card.isSixSpades ? '_JOKER' : ''}`;
-
-            if (seen.has(key)) {
-                console.warn('🚨 Найден дубликат карты:', key);
-                continue;
-            }
-
-            seen.add(key);
-            valid.push(card);
-        }
-
-        // Проверка на критическое количество карт (в расписном покере макс. 36, обычно меньше)
-        if (valid.length > 18) {
-            console.error('🚨 Критическая ошибка: слишком много карт в руке:', valid.length);
-            // Возвращаем как есть, но с логом для отладки
-        }
-
-        return valid;
+        return value + trumpValue + jokerValue
     }
 
     // ✅ МЕТОД: Показ уведомления о завершении раунда
