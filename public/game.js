@@ -132,14 +132,13 @@ class OnlinePokerGame {
         this.socket.on('cardPlayed', (state) => {
             console.log('🃏 Карта сыграна');
 
-            // ✅ Обновляем руку если пришла
             if (state.hand !== undefined) {
                 this.myHand = this._validateHand(state.hand);
             }
 
             this.gameState = state;
 
-            // ✅ Сбрасываем isProcessing только если взятка завершена или ход перешёл
+            // ✅ Разблокируем только если взятка завершена
             if (state.trickEnded || state.roundEnded) {
                 this.isProcessing = false;
                 if (this.playCardTimeout) {
@@ -169,11 +168,14 @@ class OnlinePokerGame {
 
         this.socket.on('gameState', (state) => {
             console.log('📊 Получено состояние игры');
+            console.log('🃏 Карт в руке:', state.hand?.length || 0);
 
             this.gameState = state;
-            this.myHand = this._validateHand(state.hand);
+            this.myHand = this._validateHand(state.hand || []);
 
-            // ✅ Сбрасываем isProcessing только если это не ожидание джокера
+            console.log('✅ myHand обновлён:', this.myHand.length, 'карт');
+
+            // ✅ Разблокируем только если не ожидание джокера
             if (!state.waitingForJokerChoice) {
                 this.isProcessing = false;
                 if (this.playCardTimeout) {
@@ -219,6 +221,14 @@ class OnlinePokerGame {
 
         this.socket.on('error', (error) => {
             console.error('⚠️ Ошибка:', error);
+
+            // ✅ РАЗБЛОКИРУЕМ интерфейс при ошибке!
+            this.isProcessing = false;
+            if (this.playCardTimeout) {
+                clearTimeout(this.playCardTimeout);
+                this.playCardTimeout = null;
+            }
+
             if (error.includes('Недопустимый ход')) {
                 alert('⚠️ ' + error + '\n\n📜 ПРАВИЛА РАСПИСНОГО ПОКЕРА:\n' +
                     '1️⃣ Есть масть хода — ходи ею\n' +
@@ -228,7 +238,6 @@ class OnlinePokerGame {
                 alert('⚠️ ' + error);
             }
             this.updateStatus(error, 'error');
-            this.isProcessing = false;
         });
 
         // ✅ ОБРАБОТЧИК: Раунд завершен
@@ -442,28 +451,26 @@ class OnlinePokerGame {
     }
 
     playCard(cardIdx) {
-        // ✅ Двойная проверка
         if (this.isProcessing) {
             console.log('⚠️ Уже обрабатывается запрос, игнорируем');
             return;
         }
 
-        // ✅ Проверка что есть рука
         if (!this.myHand || this.myHand.length === 0) {
             console.warn('⚠️ Нет карт в руке');
             return;
         }
 
-        // ✅ Проверка что карта существует
         if (cardIdx < 0 || cardIdx >= this.myHand.length) {
             console.warn('⚠️ Неверный индекс карты:', cardIdx);
             return;
         }
 
         console.log('🃏 playCard вызван:', { cardIdx, playerIdx: this.playerIdx });
+
+        // ✅ БЛОКИРУЕМ интерфейс СРАЗУ, до отправки
         this.isProcessing = true;
 
-        // ✅ Таймаут на случай если сервер не ответит
         this.playCardTimeout = setTimeout(() => {
             console.warn('⚠️ Таймаут хода, сброс isProcessing');
             this.isProcessing = false;

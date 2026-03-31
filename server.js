@@ -324,48 +324,57 @@ class OnlineGame {
         this.leadSuit = null;
         this.cardsPlayedThisTrick = [];
         this.trickLeaderIdx = (this.dealerIdx + 1) % this.players.length;
+        this.trickCompleted = false;  // ✅ Сброс флага в начале раунда
 
         this.deck = new Deck();
 
-        // ✅ РАСЧЁТ КАРТ ДЛЯ ТЕКУЩЕГО РАУНДА (используем modeRoundCount)
+        // ✅ СБРОС РУК И СТАТУСОВ ПЕРЕД НОВОЙ РАЗДАЧЕЙ
+        this.players.forEach(p => {
+            p.hand = [];
+            p.bid = -1;
+            p.tricks = 0;
+            p.hasBid = false;
+        });
+
         this.cardsPerRound = this.getCardsPerRound(this.modeRoundCount);
 
-        // ✅ ПРОВЕРКА ЧТО КАРТ ХВАТАЕТ
         const totalCardsNeeded = this.cardsPerRound * this.players.length;
         if (totalCardsNeeded > TOTAL_CARDS) {
             console.error(`❌ Не хватает карт! Нужно ${totalCardsNeeded}, есть ${TOTAL_CARDS}`);
             this.cardsPerRound = Math.floor(TOTAL_CARDS / this.players.length);
         }
 
-        // ✅ Выбираем случайную карту из колоды как козырь
         const trumpIndex = Math.floor(Math.random() * TOTAL_CARDS);
         this.trumpCard = this.deck.cards[trumpIndex];
 
-        // ✅ РАЗДАЧА КАРТ (по одной за ход для лучшей балансировки)
         for (let i = 0; i < this.cardsPerRound; i++) {
             this.players.forEach(p => {
                 const card = this.deck.deal();
                 if (card) {
                     p.hand.push(card);
                 }
-                p.bid = -1;
-                p.tricks = 0;
-                p.hasBid = false;
             });
         }
 
-        // ✅ ЛОГИРОВАНИЕ РАЗДАЧИ
-        this.players.forEach(p => {
-            console.log(`🃏 ${p.name} получил ${p.hand.length} карт`);
+        // ✅ ВАЛИДАЦИЯ: проверяем что у всех правильное количество карт
+        console.log('🔍 Валидация раздачи:');
+        let totalCardsInHands = 0;
+        this.players.forEach((p, idx) => {
+            console.log(`  Игрок ${idx} (${p.name}): ${p.hand.length} карт`);
+            totalCardsInHands += p.hand.length;
         });
+        console.log(`  Всего карт в руках: ${totalCardsInHands}`);
+        console.log(`  Карт в колоде: ${this.deck.cards.length}`);
+        console.log(`  Сумма: ${totalCardsInHands + this.deck.cards.length} (должно быть 36)`);
 
-        // ✅ ГАРАНТИРУЕМ ДЖОКЕР В ТЕСТ-РЕЖИМЕ
+        if (totalCardsInHands + this.deck.cards.length !== TOTAL_CARDS) {
+            console.error('🚨 КРИТИЧЕСКАЯ ОШИБКА: потеря карт между раундами!');
+        }
+
         this.ensureJokerInDeal();
 
-        // ✅ ОПРЕДЕЛЕНИЕ КОЗЫРЯ
         const modeName = mode.name;
         if (modeName !== '🃏 Бескозырка') {
-            // ✅ Козырь уже выбран при создании колоды (из полной колоды до тасовки)
             if (this.trumpCard && this.trumpCard.suit === '♠') {
                 this.trumpSuit = null;
                 this.trumpCard = null;
@@ -386,7 +395,6 @@ class OnlineGame {
         }
         this.currentPlayerIdx = 0;
 
-        // ✅ ЛОГИРОВАНИЕ НОМЕРА РАУНДА
         console.log(`🎴 === РАУНД ${this.modeRoundCount + 1} / ${this.actualRounds} ===`);
         console.log(`🎯 Режим: ${mode.name} (индекс: ${this.currentModeIdx})`);
         console.log(`🃏 Карт на игрока: ${this.cardsPerRound}`);
@@ -445,11 +453,19 @@ class OnlineGame {
 
     playCard(playerIdx, cardIdx) {
         const player = this.players[playerIdx];
+
+        // ✅ 🔥 ПЕРВАЯ ПРОВЕРКА: завершена ли взятка?
+        if (this.trickCompleted) {
+            console.warn(`⚠️ Игрок ${playerIdx} попытался ходить после завершения взятки`);
+            return { success: false, error: 'Взятка уже завершена' };
+        }
+
+        // ✅ Вторая проверка: валидность игрока и карты
         if (!player || cardIdx < 0 || cardIdx >= player.hand.length) {
             return { success: false, error: 'Неверная карта' };
         }
 
-        // ✅ 🔥 КРИТИЧЕСКАЯ ПРОВЕРКА: чей сейчас ход?
+        // ✅ Третья проверка: чей сейчас ход?
         const expectedPlayerIdx = this.getCurrentPlayerIdx();
         if (playerIdx !== expectedPlayerIdx) {
             console.error(`❌ Игрок ${playerIdx} попытался ходить вне очереди (ожидается ${expectedPlayerIdx})`);
@@ -466,7 +482,9 @@ class OnlineGame {
             return { success: false, error: 'Недопустимый ход! Следуйте масти или бейте козырем.' };
         }
 
+        // ✅ ТОЛЬКО ТЕПЕРЬ удаляем карту из руки
         const card = player.hand.splice(cardIdx, 1)[0];
+        console.log(`🃏 Карта ${card.rank}${card.suit} удалена из руки игрока ${playerIdx}`);
 
         // ✅ Для джокера — НЕ добавляем на стол сразу
         if (card.isSixSpades) {
@@ -532,12 +550,18 @@ class OnlineGame {
 
     // ✅ ЗАВЕРШЕНИЕ ВЗЯТКИ — ОПРЕДЕЛЕНИЕ ПОБЕДИТЕЛЯ
     completeTrick() {
-        // ✅ Проверка что взятка ещё не завершена
+        // ✅ Логирование перед завершением
+        console.log('🎯 Завершение взятки:');
+        this.players.forEach((p, idx) => {
+            console.log(`  Игрок ${idx} (${p.name}): ${p.hand.length} карт в руке`);
+        });
+        console.log(`  Карт на столе: ${this.cardsPlayedThisTrick.length}`);
+
         if (this.trickCompleted) {
             console.warn('⚠️ Взятка уже завершена, игнорируем повторный вызов');
             return { success: false, error: 'Взятка уже завершена' };
         }
-        this.trickCompleted = true;  // ✅ Флаг защиты
+        this.trickCompleted = true;
 
         const winner = this.determineTrickWinner();
         const winningCard = this.cardsPlayedThisTrick[winner].card;
@@ -560,7 +584,7 @@ class OnlineGame {
             });
 
             setTimeout(() => {
-                this.trickCompleted = false;  // ✅ Сброс флага для следующего раунда
+                this.trickCompleted = false;
                 this.endRound();
             }, 5000);
 
@@ -568,11 +592,17 @@ class OnlineGame {
         }
 
         setTimeout(() => {
-            this.trickCompleted = false;  // ✅ Сброс флага для следующей взятки
+            this.trickCompleted = false;
             this.cardsPlayedThisTrick = [];
             this.leadSuit = null;
             this.jokerCondition = null;
             this.jokerPlayerIdx = null;
+
+            // ✅ Логирование после сброса
+            console.log('🎴 Взятка сброшена, карты на столе очищены:');
+            this.players.forEach((p, idx) => {
+                console.log(`  Игрок ${idx} (${p.name}): ${p.hand.length} карт в руке`);
+            });
 
             this.players.forEach((player, idx) => {
                 const socket = player.socketId;
@@ -1094,6 +1124,13 @@ io.on('connection', (socket) => {
         // ✅ Проверка что выбирает тот же игрок
         if (room.pendingJoker.playerIdx !== playerIdx) {
             console.error(`❌ Игрок ${playerIdx} пытается выбрать за ${room.pendingJoker.playerIdx}`);
+
+            // ✅ ВОЗВРАЩАЕМ КАРТУ В РУКУ при ошибке
+            const cardToReturn = room.pendingJoker.card;
+            const originalPlayer = room.players[room.pendingJoker.playerIdx];
+            originalPlayer.hand.push(cardToReturn);
+            console.log(`🔄 Карта возвращена в руку игрока ${room.pendingJoker.playerIdx}`);
+
             return;
         }
 
@@ -1117,14 +1154,20 @@ io.on('connection', (socket) => {
         room.jokerChoices[playerIdx] = choice;
         room.pendingJoker = null;
 
-        // ✅ Проверяем, все ли походили
+        // ✅ Проверка что взятка не завершена пока мы выбирали
+        if (room.trickCompleted) {
+            console.warn('⚠️ Взятка завершена во время выбора джокера, возвращаем карту');
+            const originalPlayer = room.players[playerIdx];
+            originalPlayer.hand.push(room.cardsPlayedThisTrick.pop().card);
+            return;
+        }
+
         if (room.cardsPlayedThisTrick.length >= room.players.length) {
             const result = room.completeTrick();
             if (result && result.success) {
                 io.to(roomId).emit('cardPlayed', result.gameState);
             }
         } else {
-            // ✅ Передаём ход СЛЕДУЮЩЕМУ игроку
             const nextPlayerIdx = room.getCurrentPlayerIdx();
             console.log(`⏳ Ход переходит к игроку ${nextPlayerIdx}`);
 
