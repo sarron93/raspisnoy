@@ -132,25 +132,23 @@ class OnlinePokerGame {
         this.socket.on('cardPlayed', (state) => {
             console.log('🃏 Карта сыграна');
 
-            if (state.roundEnded) {
-                // ✅ Раунд завершен — ждём roundFinished
-                this.gameState = state;
-            } else if (state.trickEnded) {
-                // ✅ Взятка завершена — карты остаются на столе 3 секунды
-                this.gameState = state;
-                // ✅ НЕ обновляем myHand здесь, ждём gameState с рукой
-                this.updateGameDisplay();
-                // ✅ Ждём trickCleared для очистки стола
-            } else if (state.waitingForJokerChoice) {
-                // ✅ Джокер сыгран — ждём выбора
-                this.gameState = state;
-                // ✅ НЕ обновляем myHand, ждём gameState с рукой
-                this.updateGameDisplay();
-            } else {
-                // ✅ Обычный ход
-                this.gameState = state;
-                this.updateGameDisplay();
+            // ✅ Обновляем руку если пришла
+            if (state.hand !== undefined) {
+                this.myHand = this._validateHand(state.hand);
             }
+
+            this.gameState = state;
+
+            // ✅ Сбрасываем isProcessing только если взятка завершена или ход перешёл
+            if (state.trickEnded || state.roundEnded) {
+                this.isProcessing = false;
+                if (this.playCardTimeout) {
+                    clearTimeout(this.playCardTimeout);
+                    this.playCardTimeout = null;
+                }
+            }
+
+            this.updateGameDisplay();
         });
 
         // ✅ ОБРАБОТЧИК: Карты очищены со стола
@@ -171,16 +169,18 @@ class OnlinePokerGame {
 
         this.socket.on('gameState', (state) => {
             console.log('📊 Получено состояние игры');
-            console.log('🃏 Карт в руке:', state.hand?.length || 0);
-            console.log('📊 cardsOnTable:', state.cardsOnTable?.length || 0);
-            console.log('🎮 gameState:', state.gameState);
-            console.log('🎯 trickLeader:', state.trickLeader);
 
             this.gameState = state;
-            this.myHand = state.hand || [];  // ✅ ВАЖНО: обновляем руку
-            this.isProcessing = false;
+            this.myHand = this._validateHand(state.hand);
 
-            console.log('✅ myHand обновлён:', this.myHand.length, 'карт');
+            // ✅ Сбрасываем isProcessing только если это не ожидание джокера
+            if (!state.waitingForJokerChoice) {
+                this.isProcessing = false;
+                if (this.playCardTimeout) {
+                    clearTimeout(this.playCardTimeout);
+                    this.playCardTimeout = null;
+                }
+            }
 
             this.updateGameDisplay();
         });
@@ -266,6 +266,47 @@ class OnlinePokerGame {
                 this.isProcessing = true;
             }
         });
+    }
+
+    /**
+     * ✅ ПРОВЕРКА И ОЧИСТКА РУКИ ОТ ДУБЛИКАТОВ И ОШИБОК
+     */
+    _validateHand(hand) {
+        // Если рука не массив — возвращаем пустую
+        if (!Array.isArray(hand)) {
+            console.warn('⚠️ Рука не массив, очищаем');
+            return [];
+        }
+
+        const seen = new Set();
+        const valid = [];
+
+        for (const card of hand) {
+            // Пропускаем пустые или невалидные карты
+            if (!card || !card.suit || !card.rank) {
+                console.warn('⚠️ Невалидная карта удалена:', card);
+                continue;
+            }
+
+            // Создаём уникальный ключ для проверки дублей
+            const key = `${card.suit}${card.rank}${card.isSixSpades ? '_JOKER' : ''}`;
+
+            if (seen.has(key)) {
+                console.warn('🚨 Найден дубликат карты:', key);
+                continue;
+            }
+
+            seen.add(key);
+            valid.push(card);
+        }
+
+        // Проверка на критическое количество карт (в расписном покере макс. 36, обычно меньше)
+        if (valid.length > 18) {
+            console.error('🚨 Критическая ошибка: слишком много карт в руке:', valid.length);
+            // Возвращаем как есть, но с логом для отладки
+        }
+
+        return valid;
     }
 
     // ✅ МЕТОД: Показ уведомления о завершении раунда
@@ -401,13 +442,39 @@ class OnlinePokerGame {
     }
 
     playCard(cardIdx) {
+        // ✅ Двойная проверка
         if (this.isProcessing) {
-            console.log('⚠️ Уже обрабатывается запрос');
+            console.log('⚠️ Уже обрабатывается запрос, игнорируем');
             return;
         }
+
+        // ✅ Проверка что есть рука
+        if (!this.myHand || this.myHand.length === 0) {
+            console.warn('⚠️ Нет карт в руке');
+            return;
+        }
+
+        // ✅ Проверка что карта существует
+        if (cardIdx < 0 || cardIdx >= this.myHand.length) {
+            console.warn('⚠️ Неверный индекс карты:', cardIdx);
+            return;
+        }
+
         console.log('🃏 playCard вызван:', { cardIdx, playerIdx: this.playerIdx });
         this.isProcessing = true;
-        this.socket.emit('playCard', { roomId: this.roomId, playerIdx: this.playerIdx, cardIdx: cardIdx });
+
+        // ✅ Таймаут на случай если сервер не ответит
+        this.playCardTimeout = setTimeout(() => {
+            console.warn('⚠️ Таймаут хода, сброс isProcessing');
+            this.isProcessing = false;
+            this.playCardTimeout = null;
+        }, 5000);
+
+        this.socket.emit('playCard', {
+            roomId: this.roomId,
+            playerIdx: this.playerIdx,
+            cardIdx: cardIdx
+        });
     }
 
     requestGameState() {
@@ -589,23 +656,32 @@ class OnlinePokerGame {
         const suit = card.isSixSpades ? '🃏' : card.suit;
 
         cardDiv.innerHTML = `
-            <span class="player-card-mini-rank">${rank}</span>
-            <span class="player-card-mini-suit">${suit}</span>
-        `;
+        <span class="player-card-mini-rank">${rank}</span>
+        <span class="player-card-mini-suit">${suit}</span>
+    `;
 
-        if(!isValid){
+        if (!isValid) {
             cardDiv.classList.add('disabled');
         }
 
-        if (!isClickable || !isValid) {
-            cardDiv.title = isClickable ? 'Нельзя ходить этой картой' : 'Ждите своего хода';
+        // ✅ Блокируем клики если isProcessing
+        if (!isClickable || !isValid || this.isProcessing) {
+            cardDiv.title = this.isProcessing ? '⏳ Обработка хода...' : (isClickable ? 'Нельзя ходить этой картой' : 'Ждите своего хода');
             cardDiv.style.cursor = 'not-allowed';
+            cardDiv.style.opacity = '0.5';  // ✅ Визуальная блокировка
             return cardDiv;
-        } 
-        cardDiv.onclick = () => this.playCard(idx);
+        }
+
+        cardDiv.onclick = () => {
+            // ✅ Двойная проверка перед кликом
+            if (this.isProcessing) {
+                console.log('⚠️ Клик заблокирован (isProcessing)');
+                return;
+            }
+            this.playCard(idx);
+        };
         cardDiv.style.cursor = 'pointer';
         cardDiv.title = 'Нажмите чтобы походить';
-        
 
         return cardDiv;
     }
