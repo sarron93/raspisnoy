@@ -504,7 +504,9 @@ class OnlinePokerGame {
 
         this.gameState.players.forEach((player, idx) => {
             const wrapper = document.createElement('div');
-            wrapper.className = `player-wrapper player-position-${(this.playerIdx + idx) % this.gameState.players.length}`;
+            const playersAmount = this.gameState.players.length
+            const playerPos = (idx - this.playerIdx + playersAmount) % playersAmount
+            wrapper.className = `player-wrapper player-position-${playerPos}`;
 
             if (idx === this.playerIdx) wrapper.classList.add('active');
             if (player.isDealer) wrapper.classList.add('dealer');
