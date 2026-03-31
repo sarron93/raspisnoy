@@ -178,7 +178,7 @@ class OnlinePokerGame {
             console.log('🃏 Карт в руке:', state.hand?.length || 0);
 
             this.gameState = state;
-            this.myHand = state.hand.sort((a, b) => this.getSortValue(b) - this.getSortValue(a)) || [];
+            this.myHand = this.prepareCards(state.hand)
 
             console.log('✅ myHand обновлён:', this.myHand.length, 'карт');
 
@@ -264,7 +264,7 @@ class OnlinePokerGame {
             console.log('🃏 Карт в руке:', state.hand?.length || 0);
 
             this.gameState = state;
-            this.myHand = state.hand || [];  // ✅ ВАЖНО: обновляем руку
+            this.myHand = this.prepareCards(state.hand)
             this.isProcessing = false;
             this.updateGameDisplay();
         });
@@ -290,6 +290,15 @@ class OnlinePokerGame {
         const jokerValue =  card.isSixSpades ? 2000 : 0;
 
         return value + trumpValue + jokerValue
+    }
+
+    prepareCards(hand) {
+        if(!hand){
+            return []
+        }
+        return hand
+        .map((c, id) => ({ ...c, id }))
+        .sort((a, b) => this.getSortValue(b) - this.getSortValue(a));
     }
 
     // ✅ МЕТОД: Показ уведомления о завершении раунда
@@ -580,7 +589,6 @@ class OnlinePokerGame {
                 this.myHand.forEach((card, cardIdx) => {
                     const miniCard = this.createPlayerCardMini(
                         card,
-                        cardIdx,
                         cardsClickable,
                         validIndices.includes(cardIdx) || isBidding
                     );
@@ -626,7 +634,7 @@ class OnlinePokerGame {
         });
     }
 
-    createPlayerCardMini(card, idx, isClickable = false, isValid = false) {
+    createPlayerCardMini(card, isClickable = false, isValid = false) {
         const cardDiv = document.createElement('div');
         const cardClass = card.isSixSpades ? 'joker' :
             card.suit === '♥' || card.suit === '♦' ? 'hearts' : 'spades';
@@ -659,7 +667,7 @@ class OnlinePokerGame {
                 console.log('⚠️ Клик заблокирован (isProcessing)');
                 return;
             }
-            this.playCard(idx);
+            this.playCard(card.id);
         };
         cardDiv.style.cursor = 'pointer';
         cardDiv.title = 'Нажмите чтобы походить';
