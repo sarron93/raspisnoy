@@ -11,7 +11,7 @@
     backdrop-filter: blur(5px);
     transition: var(--transition);
     flex-wrap: wrap;
-    max-width: 220px;
+    max-width: 630px;
 }
 
 .player-wrapper.active .player-full-hand {
@@ -26,11 +26,11 @@
 
 /* 🃏 MINI CARDS */
 .player-card-mini {
-    width: 38px;
-    height: 56px;
+    width: 60px;
+    height: 90px;
     background: linear-gradient(145deg, #fefefe, #f0f0f0);
     border: 2px solid #2c5530;
-    border-radius: 7px;
+    border-radius: 10px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -71,12 +71,12 @@
 }
 
 .player-card-mini-rank {
-    font-size: 0.75rem;
+    font-size: 1.5rem;
     line-height: 1;
 }
 
 .player-card-mini-suit {
-    font-size: 0.7rem;
+    font-size: 1.5rem;
     margin-top: 2px;
     line-height: 1;
 }

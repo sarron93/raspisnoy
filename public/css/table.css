@@ -40,7 +40,7 @@
 .table-area::after {
   content: '🎰 RASPISNOY POKER 🎰';
   position: absolute;
-  top: 75%;
+  top: 25%;
   left: 50%;
   transform: translate(-50%, -50%);
   font-size: 1.1rem;
@@ -73,7 +73,7 @@
 .dealer-marker {
   position: absolute;
   top: 12px;
-  left: 50%;
+  left: 48%;
   transform: translateX(-50%);
   background: linear-gradient(135deg, rgba(255, 215, 0, 0.2), rgba(255, 193, 7, 0.1));
   padding: 5px 16px;
