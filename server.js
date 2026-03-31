@@ -681,8 +681,6 @@ class OnlineGame {
         if (this.cardsPlayedThisTrick.length === 0) return this.trickLeaderIdx;
 
         const leadCard = this.cardsPlayedThisTrick[0].card;
-
-        // ✅ ИСПОЛЬЗУЕМ this.leadSuit (он обновляется при выборе масти джокером)
         const leadSuit = this.leadSuit;
 
         let bestIdx = 0;
@@ -694,58 +692,77 @@ class OnlineGame {
             // ✅ ОБРАБОТКА ДЖОКЕРА
             if (card.isSixSpades) {
                 const jokerPower = card.jokerPower || 'high';
-
                 if (jokerPower === 'high') {
-                    // ✅ Джокер-старший бьёт всё
                     bestIdx = i;
                     bestCard = card;
                 }
-                // ✅ Джокер-младший — игнорируем (он слабее любой обычной карты)
+                // Джокер-младший не может выиграть, если есть хоть одна обычная карта
                 continue;
             }
 
-            // ✅ Если лучшая карта — джокер-старший, его не перебить
+            // ✅ Если лучшая карта — джокер-старший, его не перебить обычной картой
             if (bestCard.isSixSpades && bestCard.jokerPower === 'high') {
                 continue;
             }
 
             // ✅ Если лучшая карта — джокер-младший, обычная карта масти/козыря бьёт его
             if (bestCard.isSixSpades && bestCard.jokerPower === 'low') {
-                // ✅ Любая карта масти хода или козыря бьёт джокера-младшего
                 if (card.suit === leadSuit || (this.trumpSuit && card.suit === this.trumpSuit)) {
                     bestIdx = i;
                     bestCard = card;
-                    continue;
                 }
+                continue;
             }
 
-            // ✅ Обычная логика сравнения (если bestCard не джокер)
-            if (!bestCard.isSixSpades) {
-                // Если масть хода — пики, сравниваем только пики
-                if (leadSuit === '♠') {
-                    if (card.suit === '♠' && card.value > bestCard.value) {
-                        bestIdx = i;
-                        bestCard = card;
-                    }
-                    continue;
-                }
-
-                // ✅ Карта масти хода бьёт карту масти хода по значению
-                if (card.suit === leadSuit && card.value > bestCard.value) {
+            // ✅ СПЕЦИАЛЬНОЕ ПРАВИЛО: если масть хода — ♠, только ♠ могут выиграть
+            if (leadSuit === '♠') {
+                // Игнорируем все карты, кроме ♠ (даже козыри не работают!)
+                if (card.suit !== '♠') continue;
+                if (bestCard.suit !== '♠') {
+                    // Если текущая лучшая — не ♠, а эта — ♠, она выигрывает
+                    bestIdx = i;
+                    bestCard = card;
+                } else if (card.value > bestCard.value) {
+                    // Обе ♠ — сравниваем по значению
                     bestIdx = i;
                     bestCard = card;
                 }
-                // ✅ Козырь бьёт не-козырь
-                else if (this.trumpSuit && card.suit === this.trumpSuit) {
-                    if (bestCard.suit !== this.trumpSuit) {
-                        bestIdx = i;
-                        bestCard = card;
-                    } else if (card.value > bestCard.value) {
-                        bestIdx = i;
-                        bestCard = card;
-                    }
+                continue;
+            }
+
+            // ✅ ОБЩАЯ ЛОГИКА (масть хода НЕ ♠)
+
+            // 1️⃣ Приоритет: Козырь бьёт всё не-козырное
+            if (this.trumpSuit && card.suit === this.trumpSuit) {
+                if (bestCard.suit !== this.trumpSuit) {
+                    // Текущая — козырь, лучшая — нет → козырь выигрывает
+                    bestIdx = i;
+                    bestCard = card;
+                } else if (card.value > bestCard.value) {
+                    // Обе козыри → сравниваем по значению
+                    bestIdx = i;
+                    bestCard = card;
+                }
+                continue; // Дальше не сравниваем, козырь уже обработан
+            }
+
+            // 2️⃣ Если текущая карта НЕ козырь, но лучшая УЖЕ козырь — пропускаем
+            if (this.trumpSuit && bestCard.suit === this.trumpSuit) {
+                continue; // Не-козырь не может побить козырь
+            }
+
+            // 3️⃣ Карта масти хода бьёт карту масти хода по значению
+            if (card.suit === leadSuit) {
+                if (bestCard.suit === leadSuit && card.value > bestCard.value) {
+                    bestIdx = i;
+                    bestCard = card;
+                } else if (bestCard.suit !== leadSuit && bestCard.suit !== this.trumpSuit) {
+                    // Лучшая — сброс (не масть хода, не козырь), текущая — масть хода → текущая выигрывает
+                    bestIdx = i;
+                    bestCard = card;
                 }
             }
+            // 4️⃣ Если текущая — сброс (не масть, не козырь), она не может выиграть → пропускаем
         }
 
         return this.cardsPlayedThisTrick[bestIdx].playerIdx;
