@@ -262,6 +262,8 @@ class OnlinePokerGame {
                 this.showJokerChoiceModal(card, trickNumber, isFirstCard);
             } else {
                 this.updateStatus(`⏳ ${playerName} выбирает ${isFirstCard ? 'масть и силу' : 'силу'} джокера...`, 'warning');
+                // ✅ Блокируем интерфейс пока игрок не выберет
+                this.isProcessing = true;
             }
         });
     }
@@ -728,6 +730,45 @@ class OnlinePokerGame {
     getValidClientIndices() {
         if (!this.myHand || this.myHand.length === 0) return [];
 
+        // ✅ Если есть условие джокера — находим ОДНУ конкретную карту
+        if (this.gameState.jokerCondition &&
+            this.gameState.jokerPlayerIdx !== this.playerIdx) {
+
+            const { suit, cardType } = this.gameState.jokerCondition;
+
+            // Находим все карты нужной масти (исключая джокеров)
+            const suitCards = this.myHand.map((card, i) => ({ card, index: i }))
+                .filter(({ card }) => card.suit === suit && !card.isSixSpades);
+
+            if (suitCards.length > 0) {
+                let validIndex = -1;
+
+                if (cardType === 'high') {
+                    // ✅ Находим ОДНУ старшую карту
+                    const maxCard = suitCards.reduce((max, current) =>
+                        current.card.value > max.card.value ? current : max
+                    );
+                    validIndex = maxCard.index;
+                    console.log(`🔍 Клиент: условие джокера → валидна только ${maxCard.card.rank}${maxCard.card.suit}`);
+                } else if (cardType === 'low') {
+                    // ✅ Находим ОДНУ младшую карту
+                    const minCard = suitCards.reduce((min, current) =>
+                        current.card.value < min.card.value ? current : min
+                    );
+                    validIndex = minCard.index;
+                    console.log(`🔍 Клиент: условие джокера → валидна только ${minCard.card.rank}${minCard.card.suit}`);
+                }
+
+                // ✅ Возвращаем ОДНУ карту + джокеры
+                const jokerIndices = this.myHand.map((_, i) => i).filter(i => this.myHand[i].isSixSpades);
+                return [validIndex, ...jokerIndices].filter(i => i !== -1);
+            }
+
+            // Если нет карт нужной масти — можно сбрасывать любые
+            return this.myHand.map((_, i) => i);
+        }
+
+        // ✅ Обычная логика (без условия джокера)
         const cardsOnTableCount = this.gameState.cardsOnTable ? this.gameState.cardsOnTable.length : 0;
         if (cardsOnTableCount === 0 || !this.gameState.leadSuit) {
             return this.myHand.map((_, i) => i);
@@ -778,6 +819,37 @@ class OnlinePokerGame {
         if (this.gameState.gameState === 'finished') {
             this.showResults();
             return;
+        }
+
+        // updateControlArea():
+        if (this.gameState.jokerCondition) {
+            const { suit, cardType } = this.gameState.jokerCondition;
+            const conditionText = cardType === 'high' ? 'Старшие' : 'Младшие';
+            const conditionBar = document.getElementById('jokerConditionBar');
+            if (conditionBar) {
+                conditionBar.textContent = `🃏 Джокер: ${suit} ${conditionText} карты`;
+                conditionBar.classList.remove('hidden');
+            }
+        }
+
+        // В updateControlArea(), после проверки jokerCondition:
+        if (this.gameState.jokerCondition && this.gameState.jokerPlayerIdx !== this.playerIdx) {
+            const { suit, cardType } = this.gameState.jokerCondition;
+            const suitCards = this.myHand.filter(c => c.suit === suit && !c.isSixSpades);
+
+            if (suitCards.length > 0) {
+                let requiredCard;
+                if (cardType === 'high') {
+                    requiredCard = suitCards.reduce((max, c) => c.value > max.value ? c : max);
+                } else {
+                    requiredCard = suitCards.reduce((min, c) => c.value < min.value ? c : min);
+                }
+
+                const msgDiv = document.createElement('div');
+                msgDiv.className = 'message warning';
+                msgDiv.innerHTML = `🃏 Джокер требует: <strong>${requiredCard.rank}${requiredCard.suit}</strong> (единственная ${cardType === 'high' ? 'старшая' : 'младшая'} карта)`;
+                area.appendChild(msgDiv);
+            }
         }
 
         const mode = this.gameState.mode;
@@ -982,68 +1054,93 @@ class OnlinePokerGame {
 
     // ✅ МЕТОД: Показать модальное окно выбора силы джокера
     showJokerChoiceModal(card, trickNumber, isFirstCard = false) {
-        console.log('🎨 showJokerChoiceModal:', { card, trickNumber, isFirstCard });  // ✅ ОТЛАДКА
-
         this.isProcessing = true;
 
         const modal = document.createElement('div');
         modal.className = 'joker-choice-modal';
         modal.id = 'jokerChoiceModal';
 
-        // ✅ Если первый ход — добавляем выбор масти
+        // ✅ Выбор масти (только первый ход)
         const suitSelection = isFirstCard ? `
-        <div class="joker-suit-selection">
-            <div class="joker-suit-title">🎨 Выберите масть:</div>
-            <div class="joker-suits">
-                <button class="joker-suit-btn" data-suit="♠">♠</button>
-                <button class="joker-suit-btn" data-suit="♥">♥</button>
-                <button class="joker-suit-btn" data-suit="♦">♦</button>
-                <button class="joker-suit-btn" data-suit="♣">♣</button>
-            </div>
+    <div class="joker-suit-selection">
+        <div class="joker-suit-title">🎨 Выберите масть:</div>
+        <div class="joker-suits">
+            <button class="joker-suit-btn" data-suit="♠">♠</button>
+            <button class="joker-suit-btn" data-suit="♥">♥</button>
+            <button class="joker-suit-btn" data-suit="♦">♦</button>
+            <button class="joker-suit-btn" data-suit="♣">♣</button>
         </div>
+    </div>
+    ` : '';
+
+        // ✅ Выбор типа карт (только первый ход)
+        const cardTypeSelection = isFirstCard ? `
+    <div class="joker-cardtype-selection">
+        <div class="joker-cardtype-title">📊 Какие карты должны сбросить:</div>
+        <div class="joker-cardtype-options">
+            <button class="joker-cardtype-btn" data-type="high" id="cardTypeHigh">
+                <span class="cardtype-icon">⬆️</span>
+                <span class="cardtype-text">Старшие карты</span>
+                <span class="cardtype-desc">10, J, Q, K, A</span>
+            </button>
+            <button class="joker-cardtype-btn" data-type="low" id="cardTypeLow">
+                <span class="cardtype-icon">⬇️</span>
+                <span class="cardtype-text">Младшие карты</span>
+                <span class="cardtype-desc">6, 7, 8, 9</span>
+            </button>
+        </div>
+    </div>
     ` : '';
 
         modal.innerHTML = `
-        <div class="joker-modal-content">
-            <div class="joker-card joker">6♠🃏</div>
-            <div class="joker-title">🃏 Джокер!</div>
-            <div class="joker-question">${isFirstCard ? 'Ход джокером!' : 'Как использовать?'}</div>
-            
-            ${suitSelection}
-            
-            <div class="joker-options">
-                <button class="joker-btn joker-high" id="jokerHigh">
-                    <span class="joker-icon">⬆️</span>
-                    <span class="joker-text">Старшая карта</span>
-                    <span class="joker-desc">${isFirstCard ? 'Выиграть взятку' : 'Выиграть взятку'}</span>
-                </button>
-                <button class="joker-btn joker-low" id="jokerLow">
-                    <span class="joker-icon">⬇️</span>
-                    <span class="joker-text">Младшая карта</span>
-                    <span class="joker-desc">${isFirstCard ? 'Проиграть взятку' : 'Проиграть взятку'}</span>
-                </button>
-            </div>
-            
-            <div class="joker-info">Взятка #${trickNumber}${isFirstCard ? ' • Выберите масть и силу' : ''}</div>
+    <div class="joker-modal-content">
+        <div class="joker-card joker">6♠🃏</div>
+        <div class="joker-title">🃏 Джокер!</div>
+        <div class="joker-question">${isFirstCard ? 'Ход джокером!' : 'Как использовать?'}</div>
+        
+        ${suitSelection}
+        ${cardTypeSelection}
+        
+        <div class="joker-options">
+            <button class="joker-btn joker-high" id="jokerHigh">
+                <span class="joker-icon">⬆️</span>
+                <span class="joker-text">Старшая карта</span>
+                <span class="joker-desc">${isFirstCard ? 'Выиграть взятку' : 'Выиграть взятку'}</span>
+            </button>
+            <button class="joker-btn joker-low" id="jokerLow">
+                <span class="joker-icon">⬇️</span>
+                <span class="joker-text">Младшая карта</span>
+                <span class="joker-desc">${isFirstCard ? 'Проиграть взятку' : 'Проиграть взятку'}</span>
+            </button>
         </div>
+        
+        <div class="joker-info">Взятка #${trickNumber}${isFirstCard ? ' • Выберите масть, тип карт и силу' : ''}</div>
+    </div>
     `;
 
         document.body.appendChild(modal);
 
-        // ✅ Сохраняем выбранную масть
         let selectedSuit = null;
+        let selectedCardType = null;
 
-        // ✅ Обработчики выбора масти (только для первого хода)
+        // ✅ Обработчики выбора масти
         if (isFirstCard) {
-            console.log('🎨 Показываем выбор масти');  // ✅ ОТЛАДКА
-
             const suitBtns = modal.querySelectorAll('.joker-suit-btn');
             suitBtns.forEach(btn => {
                 btn.onclick = () => {
                     suitBtns.forEach(b => b.classList.remove('selected'));
                     btn.classList.add('selected');
                     selectedSuit = btn.dataset.suit;
-                    console.log('🎨 Выбрана масть:', selectedSuit);  // ✅ ОТЛАДКА
+                };
+            });
+
+            // ✅ Обработчики выбора типа карт
+            const cardTypeBtns = modal.querySelectorAll('.joker-cardtype-btn');
+            cardTypeBtns.forEach(btn => {
+                btn.onclick = () => {
+                    cardTypeBtns.forEach(b => b.classList.remove('selected'));
+                    btn.classList.add('selected');
+                    selectedCardType = btn.dataset.type;
                 };
             });
         }
@@ -1054,8 +1151,11 @@ class OnlinePokerGame {
                 alert('⚠️ Выберите масть!');
                 return;
             }
-            console.log('🃏 Отправка выбора: high,', selectedSuit);  // ✅ ОТЛАДКА
-            this.sendJokerChoice('high', selectedSuit);
+            if (isFirstCard && !selectedCardType) {
+                alert('⚠️ Выберите тип карт (старшие/младшие)!');
+                return;
+            }
+            this.sendJokerChoice('high', selectedSuit, selectedCardType);
             modal.remove();
         };
 
@@ -1064,8 +1164,11 @@ class OnlinePokerGame {
                 alert('⚠️ Выберите масть!');
                 return;
             }
-            console.log('🃏 Отправка выбора: low,', selectedSuit);  // ✅ ОТЛАДКА
-            this.sendJokerChoice('low', selectedSuit);
+            if (isFirstCard && !selectedCardType) {
+                alert('⚠️ Выберите тип карт (старшие/младшие)!');
+                return;
+            }
+            this.sendJokerChoice('low', selectedSuit, selectedCardType);
             modal.remove();
         };
 
@@ -1076,14 +1179,15 @@ class OnlinePokerGame {
     }
 
     // ✅ МЕТОД: Отправить выбор силы джокера (и масти если первый ход)
-    sendJokerChoice(choice, suit = null) {
-        console.log('🃏 Отправка выбора джокера:', { choice, suit });
+    sendJokerChoice(choice, suit = null, cardType = null) {
+        console.log('🃏 Отправка выбора джокера:', { choice, suit, cardType });
 
         this.socket.emit('jokerChoice', {
             roomId: this.roomId,
             playerIdx: this.playerIdx,
             choice: choice,
-            suit: suit  // ✅ null если не первый ход
+            suit: suit,
+            cardType: cardType  // ✅ Новый параметр
         });
 
         setTimeout(() => {

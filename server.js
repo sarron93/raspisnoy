@@ -63,10 +63,10 @@ const GameMode = {
 };
 
 const CAMPAIGN_MODES = [
-    GameMode.CLASSIC,
-    GameMode.NO_TRUMP,
-    GameMode.MISER,
-    GameMode.BLIND,
+    //GameMode.CLASSIC,
+    //GameMode.NO_TRUMP,
+    //GameMode.MISER,
+    //GameMode.BLIND,
     GameMode.KHAPKI
 ];
 
@@ -163,8 +163,9 @@ class OnlineGame {
         this.actualRounds = 0;
         // ✅ НОВЫЕ ПОЛЯ ДЛЯ ДЖОКЕРА
         this.jokerChoices = {};  // { playerIdx: 'high' | 'low' }
-        this.pendingJoker = null;  // { playerIdx, cardIdx, trickCards }
         this.testMode = false;
+        this.jokerCondition = null;  // ✅ { suit: '♠', cardType: 'high' | 'low' }
+        this.jokerPlayerIdx = null;  // ✅ Кто сыграл джокера первым
     }
 
     // ✅ АВТОМАТИЧЕСКОЕ НАЗНАЧЕНИЕ ЗАЯВОК
@@ -454,51 +455,36 @@ class OnlineGame {
 
         const card = player.hand.splice(cardIdx, 1)[0];
 
-        // ✅ НЕ устанавливаем leadSuit для джокера — игрок выберет масть позже!
-        if (this.cardsPlayedThisTrick.length === 0 && !card.isSixSpades) {
-            this.leadSuit = card.suit;
-            console.log(`🎴 Первая карта взятки: ${card.rank}${card.suit}, масть хода: ${this.leadSuit}`);
-        } else if (this.cardsPlayedThisTrick.length === 0 && card.isSixSpades) {
-            console.log(`🃏 Джокер первым ходом — масть будет выбрана игроком`);
-        }
+        // ✅ Если джокер сыгран ПЕРВЫМ — сохраняем условие
+        if (this.cardsPlayedThisTrick.length === 0 && card.isSixSpades) {
+            console.log(`🃏 Джокер первым ходом — ожидание выбора масти и типа карт`);
 
-        this.cardsPlayedThisTrick.push({ playerIdx, card });
-        console.log(`🃏 Игрок ${playerIdx} сыграл ${card.rank}${card.suit}, карт на столе: ${this.cardsPlayedThisTrick.length}`);
-
-        // ✅ ЕСЛИ СЫГРАН ДЖОКЕР — ЗАПРОСИТЬ ВЫБОР СИЛЫ (И ВОЗМОЖНО МАСТИ)
-        if (card.isSixSpades) {
-            console.log(`🃏 Джокер сыгран игроком ${playerIdx} — ожидание выбора`);
-
-            // ✅ Определяем тип выбора
-            const isFirstCard = this.cardsPlayedThisTrick.length === 1;  // ✅ ПРОВЕРЯЕМ ПОСЛЕ push
-
-            // ✅ Сохраняем состояние для ожидания выбора
             this.pendingJoker = {
                 playerIdx: playerIdx,
                 card: card,
-                isFirstCard: isFirstCard  // ✅ Важно для выбора масти
+                isFirstCard: true,
+                needsCondition: true  // ✅ Новый флаг
             };
 
-            // ✅ Отправляем событие для выбора
+            // ✅ Отправляем событие с флагом needsCondition
             io.to(this.roomId).emit('jokerPlayed', {
                 playerIdx: playerIdx,
                 playerName: player.name,
                 card: card.toJSON(),
                 trickNumber: this.currentTrick + 1,
-                isFirstCard: isFirstCard  // ✅ Клиент покажет выбор масти если true
+                isFirstCard: true,
+                needsCondition: true  // ✅ Клиент покажет выбор типа карт
             });
 
-            // ✅ ОТПРАВЛЯЕМ СОСТОЯНИЕ С РУКАМИ ВСЕМ ИГРОКАМ
-            this.players.forEach((player, idx) => {
-                const socket = this.players[idx].socketId;
+            // ✅ Отправляем состояние всем игрокам
+            this.players.forEach((p, idx) => {
+                const socket = p.socketId;
                 if (socket) {
                     const stateWithHand = this.getGameStateWithHand(idx);
                     io.to(socket).emit('gameState', stateWithHand);
-                    console.log(`📤 Отправлено gameState игроку ${idx} с ${stateWithHand.hand.length} карт`);
                 }
             });
 
-            // ✅ Возвращаем состояние но НЕ завершаем взятку — ждём выбор
             return {
                 success: true,
                 gameState: this.getGameState(),
@@ -506,7 +492,48 @@ class OnlineGame {
             };
         }
 
-        // ✅ ЕСЛИ ВСЕ ПОХОДИЛИ — ОПРЕДЕЛЯЕМ ПОБЕДИТЕЛЯ
+        // ✅ Если джокер сыгран НЕ первым — обычная логика
+        if (card.isSixSpades) {
+            this.pendingJoker = {
+                playerIdx: playerIdx,
+                card: card,
+                isFirstCard: false,
+                needsCondition: false
+            };
+
+            io.to(this.roomId).emit('jokerPlayed', {
+                playerIdx: playerIdx,
+                playerName: player.name,
+                card: card.toJSON(),
+                trickNumber: this.currentTrick + 1,
+                isFirstCard: false,
+                needsCondition: false
+            });
+
+            this.players.forEach((p, idx) => {
+                const socket = p.socketId;
+                if (socket) {
+                    const stateWithHand = this.getGameStateWithHand(idx);
+                    io.to(socket).emit('gameState', stateWithHand);
+                }
+            });
+
+            return {
+                success: true,
+                gameState: this.getGameState(),
+                waitingForJokerChoice: true
+            };
+        }
+
+        // ✅ Обычная карта — устанавливаем масть хода если первая
+        if (this.cardsPlayedThisTrick.length === 0) {
+            this.leadSuit = card.suit;
+            console.log(`🎴 Первая карта взятки: ${card.rank}${card.suit}, масть хода: ${this.leadSuit}`);
+        }
+
+        this.cardsPlayedThisTrick.push({ playerIdx, card });
+        console.log(`🃏 Игрок ${playerIdx} сыграл ${card.rank}${card.suit}`);
+
         if (this.cardsPlayedThisTrick.length >= this.players.length) {
             return this.completeTrick();
         }
@@ -525,6 +552,9 @@ class OnlineGame {
 
         console.log(`🏆 Взятку выиграл игрок ${winner} (${this.players[winner].name}) с картой ${winningCard.rank}${winningCard.suit}`);
         console.log(`📊 Всего взяток: ${this.currentTrick}/${this.cardsPerRound}`);
+
+        this.jokerCondition = null;
+        this.jokerPlayerIdx = null;
 
         // ✅ ОТПРАВЛЯЕМ СОСТОЯНИЕ С КАРТАМИ НА СТОЛЕ
         const gameState = this.getGameState();
@@ -577,18 +607,49 @@ class OnlineGame {
         const hand = player.hand;
         const mode = this.getCurrentMode();
 
-        console.log('🔍 getValidCards вызван:');
-        console.log('  - Карт в руке:', hand.length);
-        console.log('  - Карт на столе:', this.cardsPlayedThisTrick.length);
-        console.log('  - Масть хода:', this.leadSuit);
-        console.log('  - Козырь:', this.trumpSuit);
-        console.log('  - Режим:', mode.name);
-
+        // ✅ Первый ход — все карты валидны
         if (this.cardsPlayedThisTrick.length === 0) {
-            console.log('  ✅ Первый ход — все карты валидны');
             return hand.map((_, i) => i);
         }
 
+        // ✅ Если есть условие джокера — находим ОДНУ конкретную карту
+        if (this.jokerCondition && this.jokerPlayerIdx !== this.players.indexOf(player)) {
+            const { suit, cardType } = this.jokerCondition;
+
+            // Находим все карты нужной масти (исключая джокеров)
+            const suitCards = hand.map((card, i) => ({ card, index: i }))
+                .filter(({ card }) => card.suit === suit && !card.isSixSpades);
+
+            if (suitCards.length > 0) {
+                let validIndex = -1;
+
+                if (cardType === 'high') {
+                    // ✅ Находим ОДНУ старшую карту (максимальное значение)
+                    const maxCard = suitCards.reduce((max, current) =>
+                        current.card.value > max.card.value ? current : max
+                    );
+                    validIndex = maxCard.index;
+                    console.log(`🔍 Условие джокера: масть=${suit}, тип=high → валидна только карта ${maxCard.card.rank}${maxCard.card.suit} (индекс ${validIndex})`);
+                } else if (cardType === 'low') {
+                    // ✅ Находим ОДНУ младшую карту (минимальное значение)
+                    const minCard = suitCards.reduce((min, current) =>
+                        current.card.value < min.card.value ? current : min
+                    );
+                    validIndex = minCard.index;
+                    console.log(`🔍 Условие джокера: масть=${suit}, тип=low → валидна только карта ${minCard.card.rank}${minCard.card.suit} (индекс ${validIndex})`);
+                }
+
+                // ✅ Возвращаем ОДНУ карту + джокеры (они всегда валидны)
+                const jokerIndices = hand.map((_, i) => i).filter(i => hand[i].isSixSpades);
+                return [validIndex, ...jokerIndices].filter(i => i !== -1);
+            }
+
+            // ✅ Если нет карт нужной масти — можно сбрасывать любые
+            console.log(`⚠️ Нет карт масти ${suit} — разрешаем сброс любых карт`);
+            return hand.map((_, i) => i);
+        }
+
+        // ✅ Обычная логика (без условия джокера)
         const leadSuit = this.leadSuit;
 
         const sameSuitIndices = hand.map((_, i) => i).filter(i => {
@@ -596,18 +657,12 @@ class OnlineGame {
             return card.suit === leadSuit && !card.isSixSpades;
         });
 
-        console.log('  - Карт масти хода:', sameSuitIndices.length);
-
         if (sameSuitIndices.length > 0) {
             const jokerIndices = hand.map((_, i) => i).filter(i => hand[i].isSixSpades);
-            if (jokerIndices.length > 0) {
-                console.log('  ✅ Есть масть хода + джокер — джокер можно сыграть с выбором силы');
-            }
             return [...sameSuitIndices, ...jokerIndices];
         }
 
         if (mode === GameMode.NO_TRUMP) {
-            console.log('  ✅ Бескозырка — все карты валидны');
             return hand.map((_, i) => i);
         }
 
@@ -617,18 +672,16 @@ class OnlineGame {
                 return card.suit === this.trumpSuit && !card.isSixSpades;
             });
 
-            console.log('  - Карт козырной масти:', trumpIndices.length);
-
             if (trumpIndices.length > 0) {
                 const jokerIndices = hand.map((_, i) => i).filter(i => hand[i].isSixSpades);
-                console.log('  ✅ Нет масти хода, есть козыри — возвращаем козыри + джокер');
                 return [...trumpIndices, ...jokerIndices];
             }
         }
 
-        console.log('  ✅ Нет масти и козырей — все карты валидны (сброс)');
         return hand.map((_, i) => i);
     }
+
+
 
     // ✅ ГАРАНТИРУЕТ ЧТО ДЖОКЕР БУДЕТ В РАЗДАЧЕ (для тест-режима)
     ensureJokerInDeal() {
@@ -687,86 +740,123 @@ class OnlineGame {
         let bestCard = leadCard;
 
         for (let i = 1; i < this.cardsPlayedThisTrick.length; i++) {
-            const card = this.cardsPlayedThisTrick[i].card;
+            const currentCard = this.cardsPlayedThisTrick[i].card;
 
-            // ✅ ОБРАБОТКА ДЖОКЕРА
-            if (card.isSixSpades) {
-                const jokerPower = card.jokerPower || 'high';
-                if (jokerPower === 'high') {
-                    bestIdx = i;
-                    bestCard = card;
+            // ============================================
+            // 1️⃣ ПРИОРИТЕТ 1: Джокеры
+            // ============================================
+
+            if (currentCard.isSixSpades) {
+                const currentJokerPower = currentCard.jokerPower || 'high';
+
+                if (currentJokerPower === 'high') {
+                    if (!bestCard.isSixSpades || bestCard.jokerPower !== 'high') {
+                        bestIdx = i;
+                        bestCard = currentCard;
+                    }
                 }
-                // Джокер-младший не может выиграть, если есть хоть одна обычная карта
                 continue;
             }
 
-            // ✅ Если лучшая карта — джокер-старший, его не перебить обычной картой
             if (bestCard.isSixSpades && bestCard.jokerPower === 'high') {
                 continue;
             }
 
-            // ✅ Если лучшая карта — джокер-младший, обычная карта масти/козыря бьёт его
             if (bestCard.isSixSpades && bestCard.jokerPower === 'low') {
-                if (card.suit === leadSuit || (this.trumpSuit && card.suit === this.trumpSuit)) {
+                if (currentCard.suit === leadSuit || (this.trumpSuit && currentCard.suit === this.trumpSuit)) {
                     bestIdx = i;
-                    bestCard = card;
+                    bestCard = currentCard;
                 }
                 continue;
             }
 
-            // ✅ СПЕЦИАЛЬНОЕ ПРАВИЛО: если масть хода — ♠, только ♠ могут выиграть
+            // ============================================
+            // 2️⃣ ПРИОРИТЕТ 2: Условие джокера (high/low карты)
+            // ============================================
+
+            if (this.jokerCondition && this.jokerPlayerIdx !== null) {
+                const { suit, cardType } = this.jokerCondition;
+
+                // Обе карты должны соответствовать условию джокера
+                const bestMatchesCondition =
+                    bestCard.suit === suit &&
+                    !bestCard.isSixSpades &&
+                    (cardType === 'high' ? bestCard.value >= 10 : bestCard.value < 10);
+
+                const currentMatchesCondition =
+                    currentCard.suit === suit &&
+                    !currentCard.isSixSpades &&
+                    (cardType === 'high' ? currentCard.value >= 10 : currentCard.value < 10);
+
+                if (currentMatchesCondition) {
+                    if (!bestMatchesCondition) {
+                        // Текущая соответствует, лучшая — нет → текущая выигрывает
+                        bestIdx = i;
+                        bestCard = currentCard;
+                    } else if (cardType === 'high') {
+                        // Обе соответствуют, ищем старшую
+                        if (currentCard.value > bestCard.value) {
+                            bestIdx = i;
+                            bestCard = currentCard;
+                        }
+                    } else if (cardType === 'low') {
+                        // Обе соответствуют, ищем младшую
+                        if (currentCard.value < bestCard.value) {
+                            bestIdx = i;
+                            bestCard = currentCard;
+                        }
+                    }
+                }
+                // Если текущая не соответствует условию — она не может выиграть
+                continue;
+            }
+
+            // ============================================
+            // 3️⃣ ПРИОРИТЕТ 3: Обычная логика (если нет условия джокера)
+            // ============================================
+
             if (leadSuit === '♠') {
-                // Игнорируем все карты, кроме ♠ (даже козыри не работают!)
-                if (card.suit !== '♠') continue;
+                if (currentCard.suit !== '♠') continue;
                 if (bestCard.suit !== '♠') {
-                    // Если текущая лучшая — не ♠, а эта — ♠, она выигрывает
                     bestIdx = i;
-                    bestCard = card;
-                } else if (card.value > bestCard.value) {
-                    // Обе ♠ — сравниваем по значению
+                    bestCard = currentCard;
+                } else if (currentCard.value > bestCard.value) {
                     bestIdx = i;
-                    bestCard = card;
+                    bestCard = currentCard;
                 }
                 continue;
             }
 
-            // ✅ ОБЩАЯ ЛОГИКА (масть хода НЕ ♠)
-
-            // 1️⃣ Приоритет: Козырь бьёт всё не-козырное
-            if (this.trumpSuit && card.suit === this.trumpSuit) {
+            if (this.trumpSuit && currentCard.suit === this.trumpSuit) {
                 if (bestCard.suit !== this.trumpSuit) {
-                    // Текущая — козырь, лучшая — нет → козырь выигрывает
                     bestIdx = i;
-                    bestCard = card;
-                } else if (card.value > bestCard.value) {
-                    // Обе козыри → сравниваем по значению
+                    bestCard = currentCard;
+                } else if (currentCard.value > bestCard.value) {
                     bestIdx = i;
-                    bestCard = card;
+                    bestCard = currentCard;
                 }
-                continue; // Дальше не сравниваем, козырь уже обработан
+                continue;
             }
 
-            // 2️⃣ Если текущая карта НЕ козырь, но лучшая УЖЕ козырь — пропускаем
             if (this.trumpSuit && bestCard.suit === this.trumpSuit) {
-                continue; // Не-козырь не может побить козырь
+                continue;
             }
 
-            // 3️⃣ Карта масти хода бьёт карту масти хода по значению
-            if (card.suit === leadSuit) {
-                if (bestCard.suit === leadSuit && card.value > bestCard.value) {
+            if (currentCard.suit === leadSuit) {
+                if (bestCard.suit === leadSuit && currentCard.value > bestCard.value) {
                     bestIdx = i;
-                    bestCard = card;
+                    bestCard = currentCard;
                 } else if (bestCard.suit !== leadSuit && bestCard.suit !== this.trumpSuit) {
-                    // Лучшая — сброс (не масть хода, не козырь), текущая — масть хода → текущая выигрывает
                     bestIdx = i;
-                    bestCard = card;
+                    bestCard = currentCard;
                 }
             }
-            // 4️⃣ Если текущая — сброс (не масть, не козырь), она не может выиграть → пропускаем
         }
 
         return this.cardsPlayedThisTrick[bestIdx].playerIdx;
     }
+
+
 
     endRound() {
         const mode = this.getCurrentMode();
@@ -873,7 +963,9 @@ class OnlineGame {
             })),
             leadSuit: this.leadSuit,  // ✅ Будет null пока игрок не выберет
             currentTrick: this.currentTrick,
-            testMode: this.testMode
+            testMode: this.testMode,
+            jokerCondition: this.jokerCondition,  // ✅ Передаём клиенту
+            jokerPlayerIdx: this.jokerPlayerIdx,  // ✅ Кто задал условие
         };
     }
 
@@ -1012,47 +1104,49 @@ io.on('connection', (socket) => {
         socket.emit('gameState', state);
     });
 
-    // ✅ ОБРАБОТЧИК: Игрок выбрал силу джокера (и возможно масть)
-    socket.on('jokerChoice', ({ roomId, playerIdx, choice, suit }) => {
+    socket.on('jokerChoice', ({ roomId, playerIdx, choice, suit, cardType }) => {
         const room = rooms[roomId];
         if (!room || !room.pendingJoker) return;
 
-        console.log(`🃏 Игрок ${playerIdx} выбрал силу джокера: ${choice}${suit ? `, масть: ${suit}` : ''}`);
+        console.log(`🃏 Игрок ${playerIdx} выбрал: сила=${choice}, масть=${suit}, тип=${cardType}`);
 
         // ✅ Применяем выбор к карте
         room.pendingJoker.card.jokerPower = choice;
 
-        // ✅ Если это первый ход — устанавливаем масть
-        if (room.pendingJoker.isFirstCard && suit) {
+        // ✅ Если первый ход — сохраняем условие джокера
+        if (room.pendingJoker.isFirstCard) {
             room.leadSuit = suit;
-            console.log(`🎴 Масть хода установлена: ${suit} (джокер-лидер)`);
-        } else if (room.pendingJoker.isFirstCard && !suit) {
-            // ✅ Если масть не выбрана (баг) — используем дефолт
-            room.leadSuit = '♠';
-            console.log(`⚠️ Масть не выбрана, установлена по умолчанию: ♠`);
+            room.jokerCondition = {
+                suit: suit,
+                cardType: cardType
+            };
+            room.jokerPlayerIdx = playerIdx;
+            console.log(`🎴 Условие джокера: масть=${suit}, тип=${cardType}`);
         }
 
-        // ✅ Сохраняем выбор
-        room.jokerChoices[playerIdx] = choice;
+        // ✅ 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Добавляем карту джокера на стол!
+        room.cardsPlayedThisTrick.push({
+            playerIdx: room.pendingJoker.playerIdx,
+            card: room.pendingJoker.card
+        });
+        console.log(`🃏 Джокер добавлен на стол: ${room.pendingJoker.card.rank}${room.pendingJoker.card.suit}`);
 
-        // ✅ Очищаем ожидание
+        room.jokerChoices[playerIdx] = choice;
         room.pendingJoker = null;
 
         // ✅ Проверяем, все ли походили
         if (room.cardsPlayedThisTrick.length >= room.players.length) {
             // ✅ Все походили — завершаем взятку
             const result = room.completeTrick();
-
             if (result && result.success) {
                 io.to(roomId).emit('cardPlayed', result.gameState);
-                console.log(`✅ Взятка завершена с учётом джокера`);
             }
         } else {
-            // ✅ Ещё не все походили — отправляем состояние С РУКАМИ
+            // ✅ Ещё не все походили — передаём ход следующему игроку
             console.log(`⏳ Ожидание ходов остальных игроков (${room.cardsPlayedThisTrick.length}/${room.players.length})`);
 
             room.players.forEach((player, idx) => {
-                const socket = room.players[idx].socketId;
+                const socket = player.socketId;
                 if (socket) {
                     const stateWithHand = room.getGameStateWithHand(idx);
                     io.to(socket).emit('gameState', stateWithHand);
