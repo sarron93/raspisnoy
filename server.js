@@ -63,10 +63,10 @@ const GameMode = {
 };
 
 const CAMPAIGN_MODES = [
-    //GameMode.CLASSIC,
-    //GameMode.NO_TRUMP,
-    //GameMode.MISER,
-    //GameMode.BLIND,
+    GameMode.CLASSIC,
+    GameMode.NO_TRUMP,
+    GameMode.MISER,
+    GameMode.BLIND,
     GameMode.KHAPKI
 ];
 
