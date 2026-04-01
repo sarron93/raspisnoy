@@ -14,6 +14,13 @@ const SUITS_SORT_VALUE = {
   '♣': 0,
 };
 
+
+const PLAYERS_POSITIONS = {
+    2: [0,3],
+    3: [0,2,4],
+    4: [0,1,3,5],
+    5: [0,1,2,4,5]
+}
 class OnlinePokerGame {
     constructor() {
         this.socket = io();
@@ -553,8 +560,12 @@ class OnlinePokerGame {
             document.getElementById('turnBar').textContent = '';
         }
 
-        const dealer = this.gameState.players.find(p => p.isDealer);
-        document.getElementById('dealerMarker').textContent = `🎴 ${dealer ? dealer.name : ''}`;
+    }
+
+    getPlayerPosition(idx){
+        const playersAmount = this.gameState.players.length;
+        const playerPos = (idx - this.playerIdx + playersAmount) % playersAmount;
+        return PLAYERS_POSITIONS[playersAmount][playerPos]
     }
 
     updatePlayersArea() {
@@ -563,19 +574,10 @@ class OnlinePokerGame {
 
         this.gameState.players.forEach((player, idx) => {
             const wrapper = document.createElement('div');
-            const playersAmount = this.gameState.players.length
-            const playerPos = (idx - this.playerIdx + playersAmount) % playersAmount
-            wrapper.className = `player-wrapper player-position-${playerPos}`;
+            wrapper.className = `player-wrapper player-position-${this.getPlayerPosition(idx)}`;
 
             if (idx === this.playerIdx) wrapper.classList.add('active');
             if (player.isDealer) wrapper.classList.add('dealer');
-
-            const fullHand = document.createElement('div');
-            fullHand.className = 'player-full-hand';
-
-            // ✅ В СЛЕПОЙ — ПРОВЕРЯЕМ СДЕЛАЛ ЛИ ИГРОК СТАВКУ
-            const mode = this.gameState.mode;
-            const isBlind = mode === '👁️ Слепая';
 
             // ✅ ДЛЯ ТЕКУЩЕГО ИГРОКА — ИСПОЛЬЗУЕМ this.myHand
             if (idx === this.playerIdx && this.myHand && this.myHand.length > 0) {
@@ -586,6 +588,9 @@ class OnlinePokerGame {
 
                 const validIndices = cardsClickable ? this.getValidClientIndices() : [];
 
+                const fullHand = document.createElement('div');
+                fullHand.className = 'player-full-hand';
+
                 this.myHand.forEach((card, cardIdx) => {
                     const miniCard = this.createPlayerCardMini(
                         card,
@@ -594,23 +599,9 @@ class OnlinePokerGame {
                     );
                     fullHand.appendChild(miniCard);
                 });
-            } else {
-                // ✅ ДЛЯ ДРУГИХ ИГРОКОВ — ИСПОЛЬЗУЕМ handLength из gameState
-                if (isBlind && !player.hasBid) {
-                    // ✅ Скрываем количество карт пока ставка не сделана
-                    const cardCount = document.createElement('div');
-                    cardCount.className = 'player-card-count';
-                    cardCount.textContent = `👁️ ?`;
-                    fullHand.appendChild(cardCount);
-                } else {
-                    const cardCount = document.createElement('div');
-                    cardCount.className = 'player-card-count';
-                    cardCount.textContent = `🃏${player.handLength}`;
-                    fullHand.appendChild(cardCount);
-                }
-            }
-
             wrapper.appendChild(fullHand);
+            } 
+
 
             const playerCard = document.createElement('div');
             playerCard.className = 'player-card';
@@ -692,7 +683,7 @@ class OnlinePokerGame {
         }
 
         this.gameState.cardsOnTable.forEach(({ playerIdx, card }, index) => {
-            const div = this.createCardElement(card, false, true);
+            const div = this.createCardElement(card);
 
             const player = this.gameState.players[playerIdx];
             const isDealer = player.isDealer;
@@ -716,49 +707,27 @@ class OnlinePokerGame {
     }
 
     // ✅ МЕТОД: Создание элемента карты
-    createCardElement(card, isMini = false, isOnTable = false) {
+    createCardElement(card) {
         const cardDiv = document.createElement('div');
         const cardClass = card.isSixSpades ? 'joker' :
-            card.suit === '♥' || card.suit === '♦' ? 'hearts' : 'spades';
+        card.suit === '♥' || card.suit === '♦' ? 'hearts' : 'spades';
 
-        if (isMini) {
-            cardDiv.className = `mini-card ${cardClass}`;
-            cardDiv.textContent = card.isSixSpades ? '🃏' : card.suit;
-        } else if (isOnTable) {
-            cardDiv.className = `card-on-table ${cardClass}`;
+        cardDiv.className = `card-on-table ${cardClass}`;
 
-            const rank = card.isSixSpades ? '🃏' : card.rank;
-            const suit = card.isSixSpades ? '🃏' : card.suit;
+        const rank = card.isSixSpades ? '🃏' : card.rank;
+        const suit = card.isSixSpades ? '🃏' : card.suit;
 
-            cardDiv.innerHTML = `
-            <div class="card-corner card-corner-top">
-                <span class="card-rank">${rank}</span>
-                <span class="card-suit-small">${suit}</span>
-            </div>
-            <div class="card-center">${suit}</div>
-            <div class="card-corner card-corner-bottom">
-                <span class="card-rank">${rank}</span>
-                <span class="card-suit-small">${suit}</span>
-            </div>
+        cardDiv.innerHTML = `
+        <div class="card-corner card-corner-top">
+            <span class="card-rank">${rank}</span>
+            <span class="card-suit-small">${suit}</span>
+        </div>
+        <div class="card-center">${suit}</div>
+        <div class="card-corner card-corner-bottom">
+            <span class="card-rank">${rank}</span>
+            <span class="card-suit-small">${suit}</span>
+        </div>
         `;
-        } else {
-            cardDiv.className = `card ${cardClass}`;
-
-            const rank = card.isSixSpades ? '🃏' : card.rank;
-            const suit = card.isSixSpades ? '🃏' : card.suit;
-
-            cardDiv.innerHTML = `
-            <div class="card-corner card-corner-top">
-                <span class="card-rank">${rank}</span>
-                <span class="card-suit-small">${suit}</span>
-            </div>
-            <div class="card-center">${suit}</div>
-            <div class="card-corner card-corner-bottom">
-                <span class="card-rank">${rank}</span>
-                <span class="card-suit-small">${suit}</span>
-            </div>
-        `;
-        }
 
         return cardDiv;
     }
@@ -1262,4 +1231,3 @@ class OnlinePokerGame {
 }
 
 const game = new OnlinePokerGame();
-
