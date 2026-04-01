@@ -93,35 +93,36 @@
   pointer-events: auto;
   z-index: 10;
   transition: var(--transition);
+  transform: translate(-50%, 50%);
 }
 
 /* 📍 PLAYER POSITIONS */
 .player-position-0 {
   left: 50%;
   bottom: 8%;
-  transform: translate(-50%, 50%);
 }
 
 .player-position-1 {
-  left: 35%;
-  top: 0%;
-  transform: translate(-50%, -50%);
+  left: 15%;
+  top: -5%;
 }
 
 .player-position-2 {
-  left: 65%;
-  top: 0%;
-  transform: translate(-50%, -50%);
+  left: 35%;
+  top: -15%;
 }
 
 .player-position-3 {
-  left: 10%;
-  top: 10%;
-  transform: translate(-50%, -50%);
+  left: 50%;
+  top: -20%;
 }
 
 .player-position-4 {
-  left: 90%;
-  top: 10%;
-  transform: translate(-50%, -50%);
+  left: 65%;
+  top: -15%;
+}
+
+.player-position-5 {
+  left: 85%;
+  top: -5%;
 }

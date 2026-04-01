@@ -81,14 +81,6 @@
     line-height: 1;
 }
 
-.player-card-count {
-    color: var(--secondary);
-    font-weight: 700;
-    font-size: 0.9rem;
-    min-width: 32px;
-    text-align: center;
-}
-
 /* 👤 PLAYER CARD */
 .player-card {
     background: linear-gradient(145deg, rgba(26, 26, 62, 0.98), rgba(15, 15, 46, 0.98));
