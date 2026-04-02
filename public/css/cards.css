@@ -3,7 +3,6 @@
     background: linear-gradient(145deg, #ffffff, #f5f5f5);
     border: 3px solid #2c5530;
     border-radius: var(--border-radius-lg);
-    animation: dealCard 0.5s ease forwards;
     box-shadow:
             0 10px 30px rgba(0, 0, 0, 0.5),
             0 0 0 2px rgba(255, 255, 255, 0.1);

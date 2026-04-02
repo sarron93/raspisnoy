@@ -25,50 +25,29 @@ const VALUES = { '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K'
 const GameMode = {
     CLASSIC: {
         name: '🎯 Классика',
-        fullDeck: false,
-        fixedRounds: 11,
-        cardPattern: 'ascending_descending',
+        hasBidding: true  // ✅ ТОРГОВЛЯ ЕСТЬ
+    },
+    NO_TRUMP: {
+        name: '🃏 Бескозырка',
         hasBidding: true  // ✅ ТОРГОВЛЯ ЕСТЬ
     },
     MISER: {
         name: '😈 Мизер',
-        fullDeck: true,
-        fixedRounds: null,
-        cardPattern: 'equal_distribution',
         hasBidding: false,  // ❌ НЕТ ТОРГОВЛИ
         autoBid: 0
     },
-    NO_TRUMP: {
-        name: '🃏 Бескозырка',
-        fullDeck: true,
-        fixedRounds: null,
-        cardPattern: 'equal_distribution',
-        hasBidding: true  // ✅ ТОРГОВЛЯ ЕСТЬ
-    },
     BLIND: {
         name: '👁️ Слепая',
-        fullDeck: true,
-        fixedRounds: null,
-        cardPattern: 'equal_distribution',
         hasBidding: true  // ✅ ТОРГОВЛЯ ЕСТЬ
     },
     KHAPKI: {
         name: '🔥 Хапки',
-        fullDeck: true,
-        fixedRounds: null,
-        cardPattern: 'equal_distribution',
         hasBidding: false,  // ❌ НЕТ ТОРГОВЛИ
         autoBid: null
     }
 };
 
-const CAMPAIGN_MODES = [
-    GameMode.CLASSIC,
-    GameMode.NO_TRUMP,
-    GameMode.MISER,
-    GameMode.BLIND,
-    GameMode.KHAPKI
-];
+const MODE_KEYS = Object.keys(GameMode);
 
 const TOTAL_CARDS = 36;
 
@@ -167,6 +146,10 @@ class OnlineGame {
         this.jokerCondition = null;  // ✅ { suit: '♠', cardType: 'high' | 'low' }
         this.jokerPlayerIdx = null;// ✅ Кто сыграл джокера первым
         this.trickCompleted = false;
+
+        // ✅ Настройки комнаты (выбираются в лобби)
+        this.selectedModeKeys = [...MODE_KEYS];
+        this.campaignModes = this.selectedModeKeys.map((k) => GameMode[k]).filter(Boolean);
     }
 
     // ✅ АВТОМАТИЧЕСКОЕ НАЗНАЧЕНИЕ ЗАЯВОК
@@ -232,7 +215,27 @@ class OnlineGame {
     }
 
     getCurrentMode() {
-        return CAMPAIGN_MODES[this.currentModeIdx];
+        return this.campaignModes[this.currentModeIdx];
+    }
+
+    getAvailableModes() {
+        return MODE_KEYS.map((key) => ({ key, name: GameMode[key].name }));
+    }
+
+    setRoomModes(modeKeys) {
+        const keys = Array.isArray(modeKeys) ? modeKeys.filter(Boolean) : [];
+        const unique = [...new Set(keys)];
+        const valid = unique.filter((k) => GameMode[k]);
+
+        if (valid.length === 0) {
+            return { success: false, error: 'Выберите хотя бы один режим' };
+        }
+        if (this.gameState !== 'waiting') {
+            return { success: false, error: 'Нельзя менять режим после старта игры' };
+        }
+        this.selectedModeKeys = valid;
+        this.campaignModes = valid.map((k) => GameMode[k]);
+        return { success: true };
     }
 
     getMaxRounds() {
@@ -564,7 +567,6 @@ class OnlineGame {
         this.trickCompleted = true;
 
         const winner = this.determineTrickWinner();
-        const winningCard = this.cardsPlayedThisTrick[winner].card;
 
         this.players[winner].tricks++;
         this.trickLeaderIdx = winner;
@@ -913,7 +915,7 @@ class OnlineGame {
         this.modeRoundCount++;
 
         if (this.modeRoundCount >= this.actualRounds) {
-            if (this.currentModeIdx < CAMPAIGN_MODES.length - 1) {
+            if (this.currentModeIdx < this.campaignModes.length - 1) {
                 this.currentModeIdx++;
                 this.modeRoundCount = 0;
                 this.actualRounds = this.getMaxRounds();
@@ -952,6 +954,8 @@ class OnlineGame {
         return {
             roomId: this.roomId,
             gameState: this.gameState,
+            selectedModeKeys: this.selectedModeKeys,
+            availableModes: this.getAvailableModes(),
             players: this.players.map((p, idx) => ({
                 name: p.name,
                 score: p.score,
@@ -969,7 +973,7 @@ class OnlineGame {
             roundNumber: this.modeRoundCount + 1,
             maxRounds: this.actualRounds,
             modeIdx: this.currentModeIdx + 1,
-            totalModes: CAMPAIGN_MODES.length,
+            totalModes: this.campaignModes.length,
             cardsOnTable: this.cardsPlayedThisTrick.map(({ playerIdx, card }) => ({
                 playerIdx,
                 card: card.toJSON()
@@ -1030,7 +1034,8 @@ io.on('connection', (socket) => {
             socket.emit('roomCreated', {
                 roomId,
                 playerIdx: result.playerIdx,
-                testMode: testMode  // ✅ Сообщаем клиенту
+                testMode: testMode,  // ✅ Сообщаем клиенту
+                state: room.getGameState()
             });
             console.log(`🏠 Комната создана: ${roomId}${testMode ? ' (ТЕСТ-РЕЖИМ)' : ''}`);
         } else {
@@ -1048,12 +1053,29 @@ io.on('connection', (socket) => {
         const result = room.addPlayer(socket.id, playerName);
         if (result.success) {
             socket.join(roomId);
-            socket.emit('roomJoined', { roomId, playerIdx: result.playerIdx });
+            socket.emit('roomJoined', { roomId, playerIdx: result.playerIdx, state: room.getGameState() });
             io.to(roomId).emit('playerJoined', room.getGameState());
             console.log(`👥 Игрок ${playerName} присоединился к ${roomId}`);
         } else {
             socket.emit('error', result.error);
         }
+    });
+
+    socket.on('setRoomModes', ({ roomId, modeKeys }) => {
+        const room = rooms[roomId];
+        if (!room) {
+            socket.emit('error', 'Комната не найдена');
+            return;
+        }
+
+        const result = room.setRoomModes(modeKeys);
+        if (!result.success) {
+            socket.emit('error', result.error);
+            return;
+        }
+
+        io.to(roomId).emit('roomUpdated', room.getGameState());
+        console.log(`🎮 Комната ${roomId}: выбраны режимы ${room.selectedModeKeys.join(', ')}`);
     });
 
     socket.on('startGame', ({ roomId }) => {

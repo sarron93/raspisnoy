@@ -3,7 +3,9 @@
     background: linear-gradient(145deg, rgba(26, 26, 62, 0.95), rgba(15, 15, 46, 0.95));
     padding: var(--spacing-2xl);
     border-radius: var(--border-radius-xl);
-    box-shadow: var(--shadow-lg), 0 0 0 1px rgba(78, 204, 163, 0.2);
+    box-shadow:
+        var(--shadow-lg),
+        0 0 0 1px rgba(78, 204, 163, 0.2);
     border: 1px solid rgba(78, 204, 163, 0.3);
     max-width: 500px;
     width: 100%;
@@ -24,7 +26,7 @@ label {
     letter-spacing: 0.02em;
 }
 
-input[type="text"] {
+input[type='text'] {
     width: 100%;
     padding: var(--spacing-md) var(--spacing-lg);
     font-size: 1rem;
@@ -35,14 +37,16 @@ input[type="text"] {
     transition: var(--transition);
 }
 
-input[type="text"]:focus {
+input[type='text']:focus {
     outline: none;
     border-color: var(--secondary);
-    box-shadow: 0 0 0 4px rgba(78, 204, 163, 0.2), 0 8px 25px rgba(78, 204, 163, 0.15);
+    box-shadow:
+        0 0 0 4px rgba(78, 204, 163, 0.2),
+        0 8px 25px rgba(78, 204, 163, 0.15);
     background: rgba(10, 10, 26, 0.95);
 }
 
-input[type="text"]::placeholder {
+input[type='text']::placeholder {
     color: var(--text-muted);
     opacity: 0.7;
 }
@@ -85,7 +89,7 @@ input[type="text"]::placeholder {
     left: -100%;
     width: 100%;
     height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
     transition: left 0.5s;
 }
 
@@ -173,7 +177,9 @@ input[type="text"]::placeholder {
         filter: brightness(1);
     }
     to {
-        box-shadow: 0 0 60px rgba(78, 204, 163, 0.7), 0 0 80px rgba(255, 215, 0, 0.4);
+        box-shadow:
+            0 0 60px rgba(78, 204, 163, 0.7),
+            0 0 80px rgba(255, 215, 0, 0.4);
         filter: brightness(1.05);
     }
 }
@@ -213,3 +219,30 @@ input[type="text"]::placeholder {
     transform: translateX(4px);
 }
 
+.mode-checkboxes {
+    padding: 12px 16px;
+    border-radius: 12px;
+    border: 2px solid rgba(78, 204, 163, 0.5);
+    background: rgba(10, 10, 26, 0.8);
+    color: white;
+}
+
+.mode-help {
+    margin-top: 10px;
+    font-size: 0.95rem;
+    color: rgba(255, 255, 255, 0.75);
+    max-width: 300px;
+}
+
+.mode-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.mode-item {
+    display: flex;
+    gap: var(--spacing-sm);
+    user-select: none;
+    margin: 0;
+}
