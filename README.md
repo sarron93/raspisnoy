@@ -1,5 +1,9 @@
 # 🎰 Расписной Покер Онлайн
 
+<p align="center">
+  <img src="media/pocker.png" width="600">
+</p>
+
 **Многопользовательская карточная игра для компании друзей**
 
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
