@@ -29,6 +29,8 @@ class OnlinePokerGame {
         this.gameState = null;
         this.myHand = [];
         this.isProcessing = false;
+        this.availableModes = [];
+        this._lastSentModeKeys = null;
 
         // ✅ РЕКОННЕКТ ЛОГИКА
         this.reconnectAttempts = 0;
@@ -90,21 +92,23 @@ class OnlinePokerGame {
             }
         });
 
-        this.socket.on('roomCreated', ({ roomId, playerIdx }) => {
+        this.socket.on('roomCreated', ({ roomId, playerIdx, state }) => {
             console.log('🏠 Комната создана:', roomId);
             this.roomId = roomId;
             this.playerIdx = playerIdx;
             this.wasInGame = false;
+            if (state) this.gameState = state;
             document.getElementById('displayRoomId').textContent = roomId;
             this.showScreen('waitingScreen');
             this.updatePlayersList();
         });
 
-        this.socket.on('roomJoined', ({ roomId, playerIdx }) => {
+        this.socket.on('roomJoined', ({ roomId, playerIdx, state }) => {
             console.log('🚪 В комнате:', roomId);
             this.roomId = roomId;
             this.playerIdx = playerIdx;
             this.wasInGame = false;
+            if (state) this.gameState = state;
             document.getElementById('displayRoomId').textContent = roomId;
             this.showScreen('waitingScreen');
             this.updatePlayersList();
@@ -118,6 +122,12 @@ class OnlinePokerGame {
 
         this.socket.on('playerLeft', (state) => {
             console.log('👤 Игрок вышел');
+            this.gameState = state;
+            this.updatePlayersList();
+        });
+
+        this.socket.on('roomUpdated', (state) => {
+            console.log('⚙️ Комната обновлена');
             this.gameState = state;
             this.updatePlayersList();
         });
@@ -499,11 +509,98 @@ class OnlinePokerGame {
             div.innerHTML = `${idx === this.playerIdx ? '👉 ' : ''}${player.name} ${player.isDealer ? '👑' : ''}`;
             list.appendChild(div);
         });
+
+        // ✅ Настройки комнаты: режим
+        this.updateRoomSettings();
+
         const startBtn = document.getElementById('startBtn');
         if (this.playerIdx === 0 && this.gameState.players.length >= 2) {
             startBtn.classList.remove('hidden');
         } else {
             startBtn.classList.add('hidden');
+        }
+    }
+
+    updateRoomSettings() {
+        const container = document.getElementById('modeCheckboxes');
+        const help = document.getElementById('modeHelp');
+        if (!container || !help || !this.gameState) return;
+
+        const isHost = this.playerIdx === 0;
+        const availableModes = Array.isArray(this.gameState.availableModes) ? this.gameState.availableModes : [];
+        const selectedModeKeys = Array.isArray(this.gameState.selectedModeKeys)
+            ? this.gameState.selectedModeKeys
+            : [];
+
+        // ✅ Рендерим чекбоксы (и поддерживаем idempotent updates)
+        const nextKeys = availableModes.map(m => m.key);
+        const currentKeys = [...container.querySelectorAll('input[type="checkbox"][data-mode-key]')].map(i => i.dataset.modeKey);
+        const keysChanged =
+            currentKeys.length !== nextKeys.length ||
+            currentKeys.some((k, i) => k !== nextKeys[i]);
+
+        if (keysChanged) {
+            container.innerHTML = '';
+
+            const list = document.createElement('div');
+            list.className = 'mode-list'
+
+            availableModes.forEach(({ key, name }) => {
+                const row = document.createElement('label');
+                row.className = 'mode-item'
+                if(isHost){
+                    row.style.cursor = 'pointer'
+                }
+
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.dataset.modeKey = key;
+                // cb.disabled = !isHost;
+                cb.checked = selectedModeKeys.includes(key);
+
+                const text = document.createElement('span');
+                text.textContent = name;
+
+                row.appendChild(cb);
+                row.appendChild(text);
+                list.appendChild(row);
+            });
+
+            container.appendChild(list);
+        } else {
+            // ✅ Обновляем checked/disabled без пересоздания DOM
+            const inputs = [...container.querySelectorAll('input[type="checkbox"][data-mode-key]')];
+            inputs.forEach((cb) => {
+                // cb.disabled = !isHost;
+                cb.checked = selectedModeKeys.includes(cb.dataset.modeKey);
+            });
+        }
+
+        help.textContent = isHost
+            ? 'Выберите режимы кампании и нажмите «Начать игру».'
+            : 'Режимы выбирает создатель комнаты.';
+
+        if (!container.dataset.bound) {
+            container.addEventListener('change', () => {
+                if (!this.roomId) return;
+
+                const inputs = [...container.querySelectorAll('input[type="checkbox"][data-mode-key]')];
+                const modeKeys = inputs.filter(i => i.checked).map(i => i.dataset.modeKey);
+
+                // ✅ Нельзя оставить пусто
+                if (modeKeys.length === 0) {
+                    const first = inputs[0];
+                    if (first) first.checked = true;
+                    return;
+                }
+
+                const normalized = [...modeKeys].sort().join(',');
+                if (this._lastSentModeKeys === normalized) return;
+                this._lastSentModeKeys = normalized;
+
+                this.socket.emit('setRoomModes', { roomId: this.roomId, modeKeys });
+            });
+            container.dataset.bound = '1';
         }
     }
 
