@@ -17,6 +17,14 @@ const rooms = {};
 const roomTimers = {};  // ✅ Таймеры для авто-закрытия комнат
 const ROOM_CLOSE_TIMEOUT = 60000; // ✅ 1 минута до закрытия
 
+// ✅ СТАТИСТИКА СЕРВЕРА
+const serverStats = {
+    totalRoomsCreated: 0,
+    activeRooms: 0,
+    totalPlayersConnected: 0,
+    playersInGames: 0
+};
+
 const SUITS = ['♠', '♥', '♦', '♣'];
 const RANKS = ['6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 const VALUES = { '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14 };
@@ -1030,6 +1038,12 @@ io.on('connection', (socket) => {
         const result = room.addPlayer(socket.id, playerName);
         if (result.success) {
             rooms[roomId] = room;
+
+            // ✅ ОБНОВЛЯЕМ СТАТИСТИКУ
+            serverStats.totalRoomsCreated++;
+            serverStats.activeRooms = Object.keys(rooms).length;
+            serverStats.totalPlayersConnected++;
+
             socket.join(roomId);
             socket.emit('roomCreated', {
                 roomId,
@@ -1037,6 +1051,8 @@ io.on('connection', (socket) => {
                 testMode: testMode,  // ✅ Сообщаем клиенту
                 state: room.getGameState()
             });
+            // ✅ ОТПРАВЛЯЕМ ОБНОВЛЁННУЮ СТАТИСТИКУ ВСЕМ
+            io.emit('serverStats', serverStats);
             console.log(`🏠 Комната создана: ${roomId}${testMode ? ' (ТЕСТ-РЕЖИМ)' : ''}`);
         } else {
             socket.emit('error', result.error);
@@ -1055,6 +1071,16 @@ io.on('connection', (socket) => {
             socket.join(roomId);
             socket.emit('roomJoined', { roomId, playerIdx: result.playerIdx, state: room.getGameState() });
             io.to(roomId).emit('playerJoined', room.getGameState());
+
+            // ✅ ОБНОВЛЯЕМ СТАТИСТИКУ
+            serverStats.totalPlayersConnected++;
+            serverStats.playersInGames = Object.values(rooms).reduce((sum, room) => {
+                return sum + room.players.filter(p => p.isConnected).length;
+            }, 0);
+
+            // ✅ ОТПРАВЛЯЕМ ОБНОВЛЁННУЮ СТАТИСТИКУ ВСЕМ
+            io.emit('serverStats', serverStats);
+
             console.log(`👥 Игрок ${playerName} присоединился к ${roomId}`);
         } else {
             socket.emit('error', result.error);
@@ -1203,6 +1229,14 @@ io.on('connection', (socket) => {
         }
     });
 
+    // ✅ ЗАПРОС СТАТИСТИКИ СЕРВЕРА
+    socket.on('getServerStats', () => {
+        socket.emit('serverStats', serverStats);
+    });
+
+    // ✅ ОТПРАВЛЯЕМ СТАТИСТИКУ ПРИ ПОДКЛЮЧЕНИИ
+    socket.emit('serverStats', serverStats);
+
     socket.on('disconnect', (reason) => {
         console.log('🔌 Игрок отключился:', socket.id, 'Причина:', reason);
 
@@ -1228,6 +1262,17 @@ io.on('connection', (socket) => {
                     clearTimeout(roomTimers[roomId]);
                     delete roomTimers[roomId];
                     delete rooms[roomId];
+
+                    // ✅ ОБНОВЛЯЕМ СТАТИСТИКУ
+                    serverStats.activeRooms = Object.keys(rooms).length;
+                    serverStats.totalPlayersConnected = Math.max(0, serverStats.totalPlayersConnected - 1);
+                    serverStats.playersInGames = Object.values(rooms).reduce((sum, room) => {
+                        return sum + room.players.filter(p => p.isConnected).length;
+                    }, 0);
+
+                    // ✅ ОТПРАВЛЯЕМ ОБНОВЛЁННУЮ СТАТИСТИКУ ВСЕМ
+                    io.emit('serverStats', serverStats);
+
                     break;
                 }
 
@@ -1268,6 +1313,15 @@ io.on('connection', (socket) => {
                             // ✅ Очищаем комнату
                             delete roomTimers[roomId];
                             delete rooms[roomId];
+
+                            // ✅ ОБНОВЛЯЕМ СТАТИСТИКУ
+                            serverStats.activeRooms = Object.keys(rooms).length;
+                            serverStats.playersInGames = Object.values(rooms).reduce((sum, room) => {
+                                return sum + room.players.filter(p => p.isConnected).length;
+                            }, 0);
+
+                            io.emit('serverStats', serverStats);
+
                             console.log(`🗑️ Комната ${roomId} удалена (таймаут)`);
                         } else {
                             console.log(`✅ Игрок ${playerName} вернулся до закрытия комнаты`);
@@ -1286,6 +1340,13 @@ io.on('connection', (socket) => {
                     clearTimeout(roomTimers[roomId]);
                     delete roomTimers[roomId];
                     delete rooms[roomId];
+
+                    // ✅ ОБНОВЛЯЕМ СТАТИСТИКУ
+                    serverStats.activeRooms = Object.keys(rooms).length;
+                    serverStats.totalPlayersConnected = Math.max(0, serverStats.totalPlayersConnected - 1);
+
+                    io.emit('serverStats', serverStats);
+
                     console.log(`🗑️ Комната ${roomId} удалена (пустая)`);
                 } else {
                     io.to(roomId).emit('playerLeft', room.getGameState());

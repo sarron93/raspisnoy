@@ -56,6 +56,25 @@ class OnlinePokerGame {
             }
         });
 
+        // ✅ ОБРАБОТЧИК: Статистика сервера
+        this.socket.on('serverStats', (stats) => {
+            console.log('📊 Статистика сервера:', stats);
+
+            const playersEl = document.getElementById('statPlayers');
+            const roomsEl = document.getElementById('statRooms');
+
+            if (playersEl) {
+                playersEl.textContent = stats.totalPlayersConnected || 0;
+            }
+
+            if (roomsEl) {
+                roomsEl.textContent = stats.activeRooms || 0;
+            }
+        });
+
+        // ✅ Запрашиваем статистику при подключении
+        this.socket.emit('getServerStats');
+
         this.socket.on('disconnect', (reason) => {
             console.log('❌ Отключено от сервера:', reason);
             this.wasInGame = this.gameState && this.gameState.gameState === 'playing';
