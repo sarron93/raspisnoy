@@ -25,6 +25,41 @@ const serverStats = {
     playersInGames: 0
 };
 
+// ✅ ПОЛУЧЕНИЕ ДОСТУПНЫХ КОМНАТ (для лобби)
+function getAvailableRooms() {
+    const availableRooms = [];
+
+    for (const roomId in rooms) {
+        const room = rooms[roomId];
+
+        // ✅ Показываем только комнаты в статусе ожидания
+        if (room.gameState === 'waiting') {
+            const playerCount = room.players.filter(p => p.isConnected).length;
+            const maxPlayers = room.maxPlayers;
+            const hasSpace = playerCount < maxPlayers;
+            const testMode = room.testMode;
+
+            // ✅ Скрываем имя создателя для приватности
+            const creatorName = room.players[0]?.name || 'Unknown';
+
+            availableRooms.push({
+                roomId,
+                playerCount,
+                maxPlayers,
+                hasSpace,
+                testMode,
+                creatorName: creatorName.charAt(0).toUpperCase() + '***', // Скрываем часть имени
+                createdAt: Date.now()
+            });
+        }
+    }
+
+    // ✅ Сортируем: сначала комнаты с игроками, потом пустые
+    availableRooms.sort((a, b) => b.playerCount - a.playerCount);
+
+    return availableRooms;
+}
+
 const SUITS = ['♠', '♥', '♦', '♣'];
 const RANKS = ['6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 const VALUES = { '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14 };
@@ -1053,6 +1088,7 @@ io.on('connection', (socket) => {
             });
             // ✅ ОТПРАВЛЯЕМ ОБНОВЛЁННУЮ СТАТИСТИКУ ВСЕМ
             io.emit('serverStats', serverStats);
+            io.emit('availableRooms', getAvailableRooms());
             console.log(`🏠 Комната создана: ${roomId}${testMode ? ' (ТЕСТ-РЕЖИМ)' : ''}`);
         } else {
             socket.emit('error', result.error);
@@ -1080,6 +1116,7 @@ io.on('connection', (socket) => {
 
             // ✅ ОТПРАВЛЯЕМ ОБНОВЛЁННУЮ СТАТИСТИКУ ВСЕМ
             io.emit('serverStats', serverStats);
+            io.emit('availableRooms', getAvailableRooms()); // ✅ Обновляем список комнат
 
             console.log(`👥 Игрок ${playerName} присоединился к ${roomId}`);
         } else {
@@ -1229,13 +1266,21 @@ io.on('connection', (socket) => {
         }
     });
 
+    // ✅ ЗАПРОС СПИСКА ДОСТУПНЫХ КОМНАТ
+    socket.on('getAvailableRooms', () => {
+        const availableRooms = getAvailableRooms();
+        socket.emit('availableRooms', availableRooms);
+        console.log(`📋 Отправлен список комнат: ${availableRooms.length} доступно`);
+    });
+
     // ✅ ЗАПРОС СТАТИСТИКИ СЕРВЕРА
     socket.on('getServerStats', () => {
         socket.emit('serverStats', serverStats);
     });
 
-    // ✅ ОТПРАВЛЯЕМ СТАТИСТИКУ ПРИ ПОДКЛЮЧЕНИИ
+    // ✅ ОТПРАВЛЯЕМ СТАТИСТИКУ И СПИСОК КОМНАТ ПРИ ПОДКЛЮЧЕНИИ
     socket.emit('serverStats', serverStats);
+    socket.emit('availableRooms', getAvailableRooms());
 
     socket.on('disconnect', (reason) => {
         console.log('🔌 Игрок отключился:', socket.id, 'Причина:', reason);
@@ -1272,7 +1317,7 @@ io.on('connection', (socket) => {
 
                     // ✅ ОТПРАВЛЯЕМ ОБНОВЛЁННУЮ СТАТИСТИКУ ВСЕМ
                     io.emit('serverStats', serverStats);
-
+                    io.emit('availableRooms', getAvailableRooms()); // ✅ Обновляем список комнат
                     break;
                 }
 
@@ -1321,6 +1366,7 @@ io.on('connection', (socket) => {
                             }, 0);
 
                             io.emit('serverStats', serverStats);
+                            io.emit('availableRooms', getAvailableRooms()); // ✅ Обновляем список комнат
 
                             console.log(`🗑️ Комната ${roomId} удалена (таймаут)`);
                         } else {
@@ -1346,6 +1392,7 @@ io.on('connection', (socket) => {
                     serverStats.totalPlayersConnected = Math.max(0, serverStats.totalPlayersConnected - 1);
 
                     io.emit('serverStats', serverStats);
+                    io.emit('availableRooms', getAvailableRooms()); // ✅ Обновляем список комнат
 
                     console.log(`🗑️ Комната ${roomId} удалена (пустая)`);
                 } else {
