@@ -72,8 +72,23 @@ class OnlinePokerGame {
             }
         });
 
-        // ✅ Запрашиваем статистику при подключении
+        // ✅ ОБРАБОТЧИК: Список доступных комнат
+        this.socket.on('availableRooms', (rooms) => {
+            console.log('🏠 Доступные комнаты:', rooms);
+            this.updateRoomsList(rooms);
+        });
+
+        // ✅ Запрашиваем статистику и список комнат при подключении
         this.socket.emit('getServerStats');
+        this.socket.emit('getAvailableRooms');
+
+        // ✅ Обновляем список комнат каждые 5 секунд
+        setInterval(() => {
+            if (document.getElementById('menuScreen')?.classList.contains('active')) {
+                this.socket.emit('getAvailableRooms');
+            }
+        }, 5000);
+
 
         this.socket.on('disconnect', (reason) => {
             console.log('❌ Отключено от сервера:', reason);
@@ -1343,6 +1358,57 @@ class OnlinePokerGame {
         setTimeout(() => {
             this.isProcessing = false;
         }, 500);
+    }
+
+    // ✅ МЕТОД: Обновление списка доступных комнат
+    updateRoomsList(rooms) {
+        const container = document.getElementById('roomsList');
+        if (!container) return;
+
+        if (!rooms || rooms.length === 0) {
+            container.innerHTML = `
+            <div class="rooms-empty">
+                📭 Нет доступных комнат<br>
+                <small>Создайте свою или подождите других игроков</small>
+            </div>
+        `;
+            return;
+        }
+
+        container.innerHTML = rooms.map(room => `
+        <div class="room-item ${!room.hasSpace ? 'room-full' : ''}">
+            <div class="room-info">
+                <div class="room-id">${room.roomId}</div>
+                <div class="room-details">
+                    <span class="room-players">
+                        <span class="room-players-icon">👥</span>
+                        ${room.playerCount}/${room.maxPlayers}
+                    </span>
+                    ${room.testMode ? '<span class="room-test-badge">🧪 ТЕСТ</span>' : ''}
+                </div>
+            </div>
+            <button 
+                class="room-join-btn" 
+                onclick="game.quickJoinRoom('${room.roomId}')"
+                ${!room.hasSpace ? 'disabled' : ''}
+            >
+                ${room.hasSpace ? '🚪 Войти' : '⛔ Полная'}
+            </button>
+        </div>
+    `).join('');
+    }
+
+    // ✅ МЕТОД: Быстрое присоединение к комнате
+    quickJoinRoom(roomId) {
+        const playerName = document.getElementById('playerName').value.trim();
+        if (!playerName) {
+            alert('⚠️ Введите ваше имя перед входом в комнату!');
+            document.getElementById('playerName').focus();
+            return;
+        }
+
+        console.log('🚪 Быстрый вход в комнату:', roomId);
+        this.socket.emit('joinRoom', { roomId, playerName });
     }
 }
 
