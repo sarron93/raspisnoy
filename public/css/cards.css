@@ -4,8 +4,8 @@
     border: 3px solid #2c5530;
     border-radius: var(--border-radius-lg);
     box-shadow:
-            0 10px 30px rgba(0, 0, 0, 0.5),
-            0 0 0 2px rgba(255, 255, 255, 0.1);
+        0 10px 30px rgba(0, 0, 0, 0.5),
+        0 0 0 2px rgba(255, 255, 255, 0.1);
     position: relative;
     transform-origin: center;
     transition: var(--transition);
@@ -32,17 +32,19 @@
     transform: scale(1.12) translateY(-4px);
     z-index: 10;
     box-shadow:
-            0 16px 45px rgba(0, 0, 0, 0.6),
-            0 0 0 3px var(--secondary);
+        0 16px 45px rgba(0, 0, 0, 0.6),
+        0 0 0 3px var(--secondary);
 }
 
 .card-on-table:last-child {
-    animation: dealCard 0.5s ease forwards, highlight 1.2s ease 0.5s;
+    animation:
+        dealCard 0.5s ease forwards,
+        highlight 1.2s ease 0.5s;
     border-color: var(--secondary);
     box-shadow:
-            0 10px 30px rgba(78, 204, 163, 0.5),
-            0 0 0 2px rgba(78, 204, 163, 0.3),
-            inset 0 0 0 1px rgba(255, 255, 255, 0.9);
+        0 10px 30px rgba(78, 204, 163, 0.5),
+        0 0 0 2px rgba(78, 204, 163, 0.3),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.9);
 }
 
 @keyframes dealCard {
@@ -63,15 +65,16 @@
 }
 
 @keyframes highlight {
-    0%, 100% {
+    0%,
+    100% {
         box-shadow:
-                0 10px 30px rgba(78, 204, 163, 0.5),
-                0 0 0 2px rgba(78, 204, 163, 0.3);
+            0 10px 30px rgba(78, 204, 163, 0.5),
+            0 0 0 2px rgba(78, 204, 163, 0.3);
     }
     50% {
         box-shadow:
-                0 10px 45px rgba(78, 204, 163, 0.8),
-                0 0 0 5px rgba(78, 204, 163, 0.5);
+            0 10px 45px rgba(78, 204, 163, 0.8),
+            0 0 0 5px rgba(78, 204, 163, 0.5);
     }
 }
 
@@ -124,9 +127,9 @@
     background: linear-gradient(135deg, #e94560, #ff6b6b);
     border-color: var(--accent);
     box-shadow:
-            0 10px 30px rgba(233, 69, 96, 0.5),
-            0 0 0 2px rgba(255, 215, 0, 0.3),
-            inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+        0 10px 30px rgba(233, 69, 96, 0.5),
+        0 0 0 2px rgba(255, 215, 0, 0.3),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.3);
 }
 
 .card-on-table.joker .card-corner-top,
@@ -146,7 +149,9 @@
         transform: translate(-50%, -50%) scale(1);
     }
     to {
-        text-shadow: 0 0 30px rgba(233, 69, 96, 0.8), 0 0 50px rgba(255, 215, 0, 0.5);
+        text-shadow:
+            0 0 30px rgba(233, 69, 96, 0.8),
+            0 0 50px rgba(255, 215, 0, 0.5);
         transform: translate(-50%, -50%) scale(1.05);
     }
 }
@@ -217,4 +222,3 @@
     box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
     z-index: 5;
 }
-
