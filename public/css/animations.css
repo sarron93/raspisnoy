@@ -16,7 +16,7 @@
 
 @keyframes pulse {
     0%, 100% { opacity: 1; }
-    50% { opacity: 0.9; }
+    50% { opacity: 0.8; }
 }
 
 @keyframes float {
@@ -72,9 +72,9 @@
     }
 }
 
-@keyframes crownBounce {
-    0%, 100% { transform: translateY(0) rotate(-5deg); }
-    50% { transform: translateY(-4px) rotate(5deg); }
+@keyframes bounce {
+    0%, 100% { transform: translateY(0) rotate(5deg); }
+    50% { transform: translateY(-4px) rotate(-5deg); }
 }
 
 @keyframes messageSlide {

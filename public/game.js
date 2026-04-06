@@ -736,6 +736,7 @@ class OnlinePokerGame {
 
             const playerCard = document.createElement('div');
             playerCard.className = 'player-card';
+            if (player.isDealer) playerCard.classList.add('dealer');
 
             const avatarLetter = player.name.charAt(0).toUpperCase();
             const bidText = player.hasBid ? player.bid : '-';

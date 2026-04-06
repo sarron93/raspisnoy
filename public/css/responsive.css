@@ -8,16 +8,6 @@
         min-height: 500px;
     }
 
-
-    .player-position-0 {
-        bottom: 2%;
-        transform: translate(-50%, 60%);
-    }
-
-    .player-position-1, .player-position-2 {
-        top: 2%;
-        transform: translate(-50%, -60%);
-    }
 }
 
 /* 💻 MEDIUM SCREENS (1366px - 1919px) */
@@ -44,16 +34,6 @@
 
     .cards-on-table {
         min-height: 100px;
-    }
-
-    .player-position-0 {
-        bottom: 0%;
-        transform: translate(-50%, 50%);
-    }
-
-    .player-position-1, .player-position-2 {
-        top: 0%;
-        transform: translate(-50%, -50%);
     }
 }
 
@@ -104,45 +84,10 @@
         gap: 2px var(--spacing-sm);
     }
 
-    .player-full-hand {
-        gap: var(--spacing-sm);
-        padding: var(--spacing-md);
-        max-width: 180px;
-    }
-
     .player-card-mini {
         width: 32px;
         height: 48px;
         font-size: 0.6rem;
-    }
-
-    .player-position-0 {
-        bottom: 0%;
-        transform: translate(-50%, 60%);
-    }
-
-    .player-position-1 {
-        left: 20%;
-        top: 0%;
-        transform: translate(-50%, -60%);
-    }
-
-    .player-position-2 {
-        left: 80%;
-        top: 0%;
-        transform: translate(-50%, -60%);
-    }
-
-    .player-position-3 {
-        left: 0%;
-        top: 50%;
-        transform: translate(-50%, -50%);
-    }
-
-    .player-position-4 {
-        left: 100%;
-        top: 50%;
-        transform: translate(-50%, -50%);
     }
 }
 
@@ -208,45 +153,10 @@
         gap: 2px;
     }
 
-    .player-full-hand {
-        gap: var(--spacing-xs);
-        padding: var(--spacing-sm) var(--spacing-md);
-        max-width: 150px;
-    }
-
     .player-card-mini {
         width: 28px;
         height: 42px;
         font-size: 0.55rem;
-    }
-
-    .player-position-0 {
-        bottom: 0%;
-        transform: translate(-50%, 70%);
-    }
-
-    .player-position-1 {
-        left: 15%;
-        top: 0%;
-        transform: translate(-50%, -70%);
-    }
-
-    .player-position-2 {
-        left: 85%;
-        top: 0%;
-        transform: translate(-50%, -70%);
-    }
-
-    .player-position-3 {
-        left: 0%;
-        top: 50%;
-        transform: translate(-50%, -50%);
-    }
-
-    .player-position-4 {
-        left: 100%;
-        top: 50%;
-        transform: translate(-50%, -50%);
     }
 }
 
