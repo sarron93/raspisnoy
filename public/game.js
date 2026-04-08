@@ -851,7 +851,7 @@ class OnlinePokerGame {
 
             // 🐐 КОЗЕЛ: много-картный ход через выделение
             if (this.gameState?.gameType === 'kozel') {
-                const attackCount = this.gameState.cardsOnTable?.length || 0;
+                const attackCount = (this.gameState.cardsOnTable || []).filter(e => !e.trickComplete).length;
                 const isDefensePhase = attackCount > 0;
                 const idx = card.id;
 
@@ -965,7 +965,7 @@ class OnlinePokerGame {
     }
 
     isKozelComboBlocked() {
-        const attackCount = this.gameState.cardsOnTable?.length || 0;
+        const attackCount = (this.gameState.cardsOnTable || []).filter(e => !e.trickComplete).length;
         const isMyTurn = this.getCurrentPlayerIdx() === this.playerIdx;
         if (attackCount === 0 && !isMyTurn) {
             const opponentIdx = (this.playerIdx + 1) % 2;
@@ -1000,7 +1000,7 @@ class OnlinePokerGame {
     submitKozelDefense(action = 'discard') {
         if (this.isProcessing) return;
 
-        const attackCount = this.gameState.cardsOnTable?.length || 0;
+        const attackCount = (this.gameState.cardsOnTable || []).filter(e => !e.trickComplete).length;
         if (!Array.isArray(this.kozelSelectedIdxs) || this.kozelSelectedIdxs.length !== attackCount) return;
 
         const cardIdxs = [...this.kozelSelectedIdxs];
@@ -1354,7 +1354,10 @@ class OnlinePokerGame {
             const currentPlayerIdx = this.getCurrentPlayerIdx();
             const isMyTurn = currentPlayerIdx === this.playerIdx;
             const isFinished = this.gameState.gameState === 'finished';
-            const attackCount = this.gameState.cardsOnTable?.length || 0;
+            // Считаем только живые карты (не из lastTrick)
+            const activeCards = (this.gameState.cardsOnTable || []).filter(e => !e.trickComplete);
+            const attackCount = activeCards.length;
+            const trickJustComplete = attackCount === 0 && (this.gameState.cardsOnTable || []).some(e => e.trickComplete);
             const phase = attackCount === 0 ? 'attack' : 'defense';
             const key = `${this.gameState.gameState}:${attackCount}:${phase}`;
 
@@ -1363,6 +1366,27 @@ class OnlinePokerGame {
                 this.kozelSelectedIdxs = [];
                 this.kozelSuitLock = null;
                 this._kozelSelectionKey = key;
+            }
+
+            // Пауза 2 секунды после завершения взятки перед следующим ходом
+            if (trickJustComplete) {
+                if (!this._trickPauseUntil) {
+                    this._trickPauseUntil = Date.now() + 2000;
+                    setTimeout(() => {
+                        this._trickPauseUntil = null;
+                        this.updateControlArea();
+                    }, 2000);
+                }
+                if (Date.now() < this._trickPauseUntil) {
+                    const msg = document.createElement('div');
+                    msg.className = 'message';
+                    msg.textContent = '⏳ Следующий ход через мгновение...';
+                    area.appendChild(msg);
+                    return;
+                }
+                this._trickPauseUntil = null;
+            } else {
+                this._trickPauseUntil = null;
             }
 
             if (isFinished) {
