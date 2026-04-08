@@ -229,13 +229,14 @@ class KozelGame {
 
         this.tableDefense = defenseCards.map((card) => ({ playerIdx, card }));
 
-        const winnerIdx = beatPossible && actionNorm === 'beat' ? playerIdx : attackerIdx;
+        const isDefenseBeat = beatPossible && actionNorm === 'beat';
+        const winnerIdx = isDefenseBeat ? playerIdx : attackerIdx;
         const pile = [...this.tableAttack, ...this.tableDefense].map((x) => x.card);
 
         this.captured[winnerIdx].push(...pile);
         this.players[winnerIdx].tricks += 1;
 
-        this.finishTrick(winnerIdx);
+        this.finishTrick(winnerIdx, isDefenseBeat);
         return { success: true, gameState: this.getGameState(), trickEnded: true };
     }
 
@@ -344,12 +345,12 @@ class KozelGame {
         return dfs(0);
     }
 
-    finishTrick(winnerIdx) {
-        // Сохраняем последнюю взятку для отображения до начала следующей атаки
+    finishTrick(winnerIdx, isDefenseBeat = false) {
+        // Сохраняем последнюю взятку: защитные карты только если отбились (не скинули)
         this.lastTrick = {
             cards: [
                 ...this.tableAttack.map(e => ({ ...e, isDefense: false })),
-                ...this.tableDefense.map(e => ({ ...e, isDefense: true })),
+                ...(isDefenseBeat ? this.tableDefense.map(e => ({ ...e, isDefense: true })) : []),
             ],
             winnerIdx,
             winnerName: this.players[winnerIdx]?.name || '',

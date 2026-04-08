@@ -1370,23 +1370,33 @@ class OnlinePokerGame {
 
             // Пауза 2 секунды после завершения взятки перед следующим ходом
             if (trickJustComplete) {
-                if (!this._trickPauseUntil) {
-                    this._trickPauseUntil = Date.now() + 2000;
+                // Уникальный ключ взятки — чтобы не перезапускать таймер при повторных рендерах
+                const trickKey = (this.gameState.cardsOnTable || [])
+                    .filter(e => e.trickComplete)
+                    .map(e => `${e.card.rank}${e.card.suit}`)
+                    .join(',');
+
+                if (this._kozelPausedTrickKey !== trickKey) {
+                    // Новая завершённая взятка — запускаем таймер один раз
+                    this._kozelPausedTrickKey = trickKey;
+                    this._kozelPauseExpired = false;
                     setTimeout(() => {
-                        this._trickPauseUntil = null;
+                        this._kozelPauseExpired = true;
                         this.updateControlArea();
                     }, 2000);
                 }
-                if (Date.now() < this._trickPauseUntil) {
+
+                if (!this._kozelPauseExpired) {
                     const msg = document.createElement('div');
                     msg.className = 'message';
                     msg.textContent = '⏳ Следующий ход через мгновение...';
                     area.appendChild(msg);
                     return;
                 }
-                this._trickPauseUntil = null;
+                // Пауза истекла — показываем обычный UI атаки
             } else {
-                this._trickPauseUntil = null;
+                this._kozelPausedTrickKey = null;
+                this._kozelPauseExpired = false;
             }
 
             if (isFinished) {
