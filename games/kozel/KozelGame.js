@@ -55,6 +55,8 @@ class KozelGame {
         this.roundPoints = [0, 0];
         this.penalties = [0, 0]; // накопленные штрафные очки
         this.eggsMultiplier = 1; // множитель "яиц" (60-60)
+        this.lastTrick = null; // последняя взятка — хранится до начала следующей атаки
+        this.roundSummary = null; // итоги кона — хранится до нажатия "продолжить"
     }
 
     addPlayer(socketId, name) {
@@ -93,6 +95,7 @@ class KozelGame {
         this.tableAttack = [];
         this.tableDefense = [];
         this.kozelAttackSuit = null;
+        this.lastTrick = null;
         this.captured = [[], []];
         this.roundPoints = [0, 0];
 
@@ -183,6 +186,7 @@ class KozelGame {
             }
 
             this.kozelAttackSuit = attackSuit;
+            this.lastTrick = null; // новая атака — скрываем предыдущую взятку
             this.tableAttack = pickedCards.map((card) => ({ playerIdx, card }));
 
             // Второй игрок отвечает
@@ -299,6 +303,7 @@ class KozelGame {
             this.kozelAttackSuit = null; // москва — смешанные масти
         }
 
+        this.lastTrick = null; // новая атака комбо — скрываем предыдущую взятку
         this.tableAttack = comboCards.map(card => ({ playerIdx, card }));
         this.currentPlayerIdx = opponentIdx;
 
@@ -340,19 +345,34 @@ class KozelGame {
     }
 
     finishTrick(winnerIdx) {
+        // Сохраняем последнюю взятку для отображения до начала следующей атаки
+        this.lastTrick = {
+            cards: [
+                ...this.tableAttack.map(e => ({ ...e, isDefense: false })),
+                ...this.tableDefense.map(e => ({ ...e, isDefense: true })),
+            ],
+            winnerIdx,
+            winnerName: this.players[winnerIdx]?.name || '',
+        };
         this.tableAttack = [];
         this.tableDefense = [];
         this.kozelAttackSuit = null;
 
-        // Добор после взятки:
-        //  - сначала добирает взявший, затем второй
-        //  - каждый добирает до 4 карт (столько, сколько сыграл)
-        [winnerIdx, (winnerIdx + 1) % 2].forEach((idx) => {
-            while (this.players[idx].hand.length < 4 && this.deck.cards.length > 0) {
-                const card = this.deck.deal();
-                if (card) this.players[idx].hand.push(card);
+        // Добор после взятки: по очереди (по одной карте), начиная со взявшего
+        // Это гарантирует, что у обоих будет одинаковое количество карт
+        const loserIdx = (winnerIdx + 1) % 2;
+        const needed = [
+            Math.max(0, 4 - this.players[winnerIdx].hand.length),
+            Math.max(0, 4 - this.players[loserIdx].hand.length),
+        ];
+        for (let i = 0; i < Math.max(needed[0], needed[1]); i++) {
+            if (i < needed[0] && this.deck.cards.length > 0) {
+                this.players[winnerIdx].hand.push(this.deck.deal());
             }
-        });
+            if (i < needed[1] && this.deck.cards.length > 0) {
+                this.players[loserIdx].hand.push(this.deck.deal());
+            }
+        }
 
         this.currentPlayerIdx = winnerIdx;
         this.firstPlayerIdx = winnerIdx;
@@ -371,9 +391,6 @@ class KozelGame {
 
         const sum = this.roundPoints[0] + this.roundPoints[1];
 
-        // Правило штрафов по количеству очков в коне:
-        // "кто первым набирает 12 штрафных очков"
-        // Здесь сделаем "недобор до 120" по твоей логике из предыдущей версии:
         if (sum < 120) {
             const lost = 120 - sum;
             const loserIdx = this.roundPoints[0] >= this.roundPoints[1] ? 1 : 0;
@@ -392,25 +409,43 @@ class KozelGame {
         if (this.players[0]) this.players[0].score = -this.penalties[0];
         if (this.players[1]) this.players[1].score = -this.penalties[1];
 
-        // "Яйца" (60–60) → удвоение штрафа в следующей игре
-        if (this.roundPoints[0] === 60 && this.roundPoints[1] === 60) {
+        const isEggs = this.roundPoints[0] === 60 && this.roundPoints[1] === 60;
+        if (isEggs) {
             this.eggsMultiplier = 2;
         } else {
             this.eggsMultiplier = 1;
         }
 
-        // Конец партии
-        if (this.penalties[0] >= KOZEL_PENALTY_TARGET || this.penalties[1] >= KOZEL_PENALTY_TARGET) {
+        const isFinished = this.penalties[0] >= KOZEL_PENALTY_TARGET || this.penalties[1] >= KOZEL_PENALTY_TARGET;
+
+        // Сохраняем итоги кона для отображения
+        this.roundSummary = {
+            roundPoints: [...this.roundPoints],
+            penalties: [p0Penalty, p1Penalty],
+            totalPenalties: [...this.penalties],
+            playerNames: this.players.map(p => p.name),
+            isEggs,
+            isFinished,
+            eggsMultiplier: this.eggsMultiplier,
+        };
+
+        if (isFinished) {
             this.gameState = 'finished';
             return;
         }
 
-        // Следующий дилер — проигравший кон
-        const loserIdx = this.roundPoints[0] >= this.roundPoints[1] ? 1 : 0;
-        this.dealerIdx = loserIdx;
-        this.firstPlayerIdx = this.currentPlayerIdx;
+        // Ждём подтверждения игрока перед запуском нового кона
+        this.gameState = 'roundEnd';
+    }
 
+    confirmRoundEnd() {
+        if (this.gameState !== 'roundEnd') return { success: false, error: 'Не время' };
+
+        const loserIdx = this.roundSummary.roundPoints[0] >= this.roundSummary.roundPoints[1] ? 1 : 0;
+        this.dealerIdx = loserIdx;
+        this.roundSummary = null;
         this.startRound();
+        return { success: true, gameState: this.getGameState() };
     }
 
     getGameState() {
@@ -442,10 +477,24 @@ class KozelGame {
             maxRounds: 1,
             modeIdx: 1,
             totalModes: 1,
-            cardsOnTable: [...this.tableAttack, ...this.tableDefense].map(({ playerIdx, card }) => ({
-                playerIdx,
-                card: card.toJSON(),
-            })),
+            cardsOnTable: (() => {
+                if (this.tableAttack.length > 0 || this.tableDefense.length > 0) {
+                    return [
+                        ...this.tableAttack.map(({ playerIdx, card }) => ({ playerIdx, card: card.toJSON(), isDefense: false })),
+                        ...this.tableDefense.map(({ playerIdx, card }) => ({ playerIdx, card: card.toJSON(), isDefense: true })),
+                    ];
+                }
+                if (this.lastTrick) {
+                    return this.lastTrick.cards.map(({ playerIdx, card, isDefense }) => ({
+                        playerIdx,
+                        card: card.toJSON(),
+                        isDefense,
+                        trickComplete: true,
+                    }));
+                }
+                return [];
+            })(),
+            lastTrickWinner: this.lastTrick ? { idx: this.lastTrick.winnerIdx, name: this.lastTrick.winnerName } : null,
             leadSuit: this.tableAttack[0]?.card?.suit || null,
             kozelAttackSuit: this.kozelAttackSuit,
             currentTrick: p0Tricks + p1Tricks,
@@ -458,6 +507,7 @@ class KozelGame {
                 eggsMultiplier: this.eggsMultiplier,
                 deckCount: this.deck?.cards?.length || 0,
             },
+            roundSummary: this.roundSummary || null,
             playerCombos: this.players.map((_, idx) => ({
                 hammer: this.hasHammer(idx),
                 moscow: this.hasMoscow(idx),

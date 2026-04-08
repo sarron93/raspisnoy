@@ -1479,6 +1479,20 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('kozelContinue', ({ roomId, playerIdx }) => {
+        const room = rooms[roomId];
+        if (!room || (room.gameType || 'poker') !== 'kozel') return;
+
+        const result = room.confirmRoundEnd();
+        if (result && result.success) {
+            room.players.forEach((p, idx) => {
+                if (p?.socketId) {
+                    io.to(p.socketId).emit('gameState', room.getGameStateWithHand(idx));
+                }
+            });
+        }
+    });
+
     socket.on('playCombo', ({ roomId, playerIdx, comboType }) => {
         const room = rooms[roomId];
         if (!room) return;

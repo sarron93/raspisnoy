@@ -1111,6 +1111,11 @@ class OnlinePokerGame {
     updateCardsOnTable() {
         const area = document.getElementById('cardsOnTable');
         area.innerHTML = '';
+        area.style.display = '';
+        area.style.flexDirection = '';
+        area.style.alignItems = '';
+        area.style.flexWrap = '';
+        area.style.justifyContent = '';
 
         if (!this.gameState.cardsOnTable || this.gameState.cardsOnTable.length === 0) {
             const emptyMsg = document.createElement('div');
@@ -1121,6 +1126,63 @@ class OnlinePokerGame {
             emptyMsg.style.padding = '20px';
             emptyMsg.textContent = '🃏 Карты будут здесь...';
             area.appendChild(emptyMsg);
+            return;
+        }
+
+        const trickComplete = this.gameState.cardsOnTable.some(e => e.trickComplete);
+
+        // Для козла показываем атаку и защиту раздельно
+        if (this.gameState.gameType === 'kozel' && this.gameState.cardsOnTable.length > 0) {
+            area.style.display = 'flex';
+            area.style.flexDirection = 'row';
+            area.style.alignItems = 'center';
+            area.style.flexWrap = 'wrap';
+            area.style.justifyContent = 'center';
+            const attackCards = this.gameState.cardsOnTable.filter(e => !e.isDefense);
+            const defenseCards = this.gameState.cardsOnTable.filter(e => e.isDefense);
+
+            const renderGroup = (entries, label) => {
+                if (entries.length === 0) return;
+                const group = document.createElement('div');
+                group.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px;';
+
+                const lbl = document.createElement('div');
+                lbl.style.cssText = 'font-size:0.75em;color:rgba(255,255,255,0.5);margin-bottom:2px;';
+                lbl.textContent = label;
+                group.appendChild(lbl);
+
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex;gap:6px;';
+                entries.forEach(({ playerIdx, card }) => {
+                    const div = this.createCardElement(card);
+                    if (trickComplete) div.style.opacity = '0.6';
+                    const player = this.gameState.players[playerIdx];
+                    const playerName = player.name.length > 8 ? player.name.substring(0, 8) + '…' : player.name;
+                    const badge = document.createElement('div');
+                    badge.className = `player-badge ${player.isDealer ? 'dealer' : ''}`;
+                    badge.innerHTML = `${player.isDealer ? '👑 ' : ''}${playerName}`;
+                    div.appendChild(badge);
+                    row.appendChild(div);
+                });
+                group.appendChild(row);
+                area.appendChild(group);
+            };
+
+            renderGroup(attackCards, 'атака');
+            if (defenseCards.length > 0) {
+                const sep = document.createElement('div');
+                sep.style.cssText = 'display:flex;align-items:center;color:rgba(255,255,255,0.3);font-size:1.2em;padding:0 4px;';
+                sep.textContent = '→';
+                area.appendChild(sep);
+                renderGroup(defenseCards, 'защита');
+            }
+
+            if (trickComplete && this.gameState.lastTrickWinner) {
+                const winner = document.createElement('div');
+                winner.style.cssText = 'font-size:0.8em;color:#4ecca3;grid-column:1/-1;text-align:center;margin-top:4px;';
+                winner.textContent = `✅ Взял: ${this.gameState.lastTrickWinner.name}`;
+                area.appendChild(winner);
+            }
             return;
         }
 
@@ -1308,6 +1370,64 @@ class OnlinePokerGame {
                 msg.className = 'message success';
                 msg.textContent = '🏁 Партия в Козла завершена';
                 area.appendChild(msg);
+                return;
+            }
+
+            // Экран итогов кона
+            if (this.gameState.gameState === 'roundEnd' && this.gameState.roundSummary) {
+                const s = this.gameState.roundSummary;
+                const names = s.playerNames;
+                const PENALTY_LABELS = { 0: '0 штрафов', 2: '+2 яйца', 4: '+4 яйца', 6: '+6 яиц' };
+
+                let html = `<div style="text-align:center;padding:8px 0;">`;
+                html += `<div style="font-size:1.1em;font-weight:bold;margin-bottom:12px;color:#4ecca3;">📊 Итоги кона</div>`;
+                html += `<table style="width:100%;border-collapse:collapse;font-size:0.9em;">`;
+                html += `<tr style="color:rgba(255,255,255,0.6);">
+                    <th style="text-align:left;padding:4px 8px;"></th>
+                    <th style="padding:4px 8px;">${names[0]}</th>
+                    <th style="padding:4px 8px;">${names[1]}</th>
+                </tr>`;
+                html += `<tr>
+                    <td style="padding:4px 8px;color:rgba(255,255,255,0.6);">Очков собрано</td>
+                    <td style="text-align:center;padding:4px 8px;font-weight:bold;">${s.roundPoints[0]}</td>
+                    <td style="text-align:center;padding:4px 8px;font-weight:bold;">${s.roundPoints[1]}</td>
+                </tr>`;
+                html += `<tr>
+                    <td style="padding:4px 8px;color:rgba(255,255,255,0.6);">Штраф за кон</td>
+                    <td style="text-align:center;padding:4px 8px;color:${s.penalties[0] > 0 ? '#ff6b6b' : '#4ecca3'};">
+                        ${s.penalties[0] > 0 ? '+' + s.penalties[0] : '0'}
+                    </td>
+                    <td style="text-align:center;padding:4px 8px;color:${s.penalties[1] > 0 ? '#ff6b6b' : '#4ecca3'};">
+                        ${s.penalties[1] > 0 ? '+' + s.penalties[1] : '0'}
+                    </td>
+                </tr>`;
+                html += `<tr style="border-top:1px solid rgba(255,255,255,0.2);">
+                    <td style="padding:6px 8px;color:rgba(255,255,255,0.6);">Всего яиц</td>
+                    <td style="text-align:center;padding:6px 8px;font-size:1.1em;font-weight:bold;color:${s.totalPenalties[0] >= 12 ? '#ff6b6b' : '#fff'};">
+                        ${s.totalPenalties[0]} / 12
+                    </td>
+                    <td style="text-align:center;padding:6px 8px;font-size:1.1em;font-weight:bold;color:${s.totalPenalties[1] >= 12 ? '#ff6b6b' : '#fff'};">
+                        ${s.totalPenalties[1]} / 12
+                    </td>
+                </tr>`;
+                html += `</table>`;
+                if (s.isEggs) {
+                    html += `<div style="margin-top:10px;color:#ffd700;font-weight:bold;">🥚 Яйца! Следующий кон ×2</div>`;
+                }
+                html += `</div>`;
+
+                const summary = document.createElement('div');
+                summary.innerHTML = html;
+                area.appendChild(summary);
+
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-primary';
+                btn.style.marginTop = '12px';
+                btn.textContent = '▶ Следующий кон';
+                btn.onclick = () => {
+                    this.socket.emit('kozelContinue', { roomId: this.roomId, playerIdx: this.playerIdx });
+                };
+                area.appendChild(btn);
                 return;
             }
 
