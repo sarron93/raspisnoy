@@ -14,6 +14,9 @@ const SUITS_SORT_VALUE = {
   '♣': 0,
 };
 
+// Старшинство для "Козла": 6 < 7 < 8 < 9 < В(=J) < Д(=Q) < К < 10 < Т(=A)
+const KOZEL_RANK_ORDER = { '6': 0, '7': 1, '8': 2, '9': 3, 'J': 4, 'Q': 5, 'K': 6, '10': 7, 'A': 8 };
+
 
 const PLAYERS_POSITIONS = {
     2: [0,3],
@@ -24,6 +27,7 @@ const PLAYERS_POSITIONS = {
 class OnlinePokerGame {
     constructor() {
         this.socket = io();
+        this.gameType = 'poker';
         this.roomId = null;
         this.playerIdx = null;
         this.gameState = null;
@@ -31,6 +35,11 @@ class OnlinePokerGame {
         this.isProcessing = false;
         this.availableModes = [];
         this._lastSentModeKeys = null;
+
+        // 🐐 Козел: выбор нескольких карт за один ход (клиентская логика)
+        this.kozelSelectedIdxs = [];
+        this.kozelSuitLock = null; // только для атаки: масть для не-джокеров
+        this._kozelSelectionKey = null; // чтобы сбрасывать выделение при смене фазы/хода
 
         // ✅ РЕКОННЕКТ ЛОГИКА
         this.reconnectAttempts = 0;
@@ -40,6 +49,11 @@ class OnlinePokerGame {
         this.wasInGame = false;
 
         this.setupSocketListeners();
+    }
+
+    getSelectedGameType() {
+        const select = document.getElementById('gameTypeSelect');
+        return select?.value || 'poker';
     }
 
     setupSocketListeners() {
@@ -128,6 +142,7 @@ class OnlinePokerGame {
 
         this.socket.on('roomCreated', ({ roomId, playerIdx, state }) => {
             console.log('🏠 Комната создана:', roomId);
+            this.gameType = state?.gameType || this.getSelectedGameType();
             this.roomId = roomId;
             this.playerIdx = playerIdx;
             this.wasInGame = false;
@@ -139,6 +154,7 @@ class OnlinePokerGame {
 
         this.socket.on('roomJoined', ({ roomId, playerIdx, state }) => {
             console.log('🚪 В комнате:', roomId);
+            this.gameType = state?.gameType || this.getSelectedGameType();
             this.roomId = roomId;
             this.playerIdx = playerIdx;
             this.wasInGame = false;
@@ -196,6 +212,15 @@ class OnlinePokerGame {
 
             this.gameState = state;
 
+            // Для Козла снимаем блокировку после любого серверного апдейта.
+            if (state.gameType === 'kozel') {
+                this.isProcessing = false;
+                if (this.playCardTimeout) {
+                    clearTimeout(this.playCardTimeout);
+                    this.playCardTimeout = null;
+                }
+            }
+
             // ✅ Разблокируем только если взятка завершена
             if (state.trickEnded || state.roundEnded) {
                 this.isProcessing = false;
@@ -235,6 +260,14 @@ class OnlinePokerGame {
 
             // ✅ Разблокируем только если не ожидание джокера
             if (!state.waitingForJokerChoice) {
+                this.isProcessing = false;
+                if (this.playCardTimeout) {
+                    clearTimeout(this.playCardTimeout);
+                    this.playCardTimeout = null;
+                }
+            }
+
+            if (state.gameType === 'kozel') {
                 this.isProcessing = false;
                 if (this.playCardTimeout) {
                     clearTimeout(this.playCardTimeout);
@@ -456,11 +489,13 @@ class OnlinePokerGame {
     createRoom(testMode = false) {
         const playerName = document.getElementById('playerName').value.trim();
         if (!playerName) { alert('Введите ваше имя!'); return; }
+        this.gameType = this.getSelectedGameType();
 
         this.socket.emit('createRoom', {
             playerName,
-            maxPlayers: 4,
-            testMode: testMode  // ✅ Передаём флаг
+            maxPlayers: this.gameType === 'kozel' ? 2 : 4,
+            testMode: testMode,  // ✅ Передаём флаг
+            gameType: this.gameType
         });
     }
 
@@ -469,7 +504,8 @@ class OnlinePokerGame {
         const roomId = document.getElementById('roomIdInput').value.trim().toUpperCase();
         if (!playerName) { alert('Введите ваше имя!'); return; }
         if (!roomId) { alert('Введите код комнаты!'); return; }
-        this.socket.emit('joinRoom', { roomId, playerName });
+        this.gameType = this.getSelectedGameType();
+        this.socket.emit('joinRoom', { roomId, playerName, gameType: this.gameType });
     }
 
     startGame() {
@@ -484,7 +520,7 @@ class OnlinePokerGame {
         this.socket.emit('makeBid', { roomId: this.roomId, playerIdx: this.playerIdx, bid: bid });
     }
 
-    playCard(cardIdx) {
+    playCard(cardIdx, action = null) {
         if (this.isProcessing) {
             console.log('⚠️ Уже обрабатывается запрос, игнорируем');
             return;
@@ -495,12 +531,15 @@ class OnlinePokerGame {
             return;
         }
 
-        if (cardIdx < 0 || cardIdx >= this.myHand.length) {
-            console.warn('⚠️ Неверный индекс карты:', cardIdx);
+        const isKozel = this.gameState?.gameType === 'kozel';
+        const cardIdxs = Array.isArray(cardIdx) ? cardIdx : [cardIdx];
+
+        if (cardIdxs.length === 0 || cardIdxs.some((i) => i < 0 || i >= this.myHand.length)) {
+            console.warn('⚠️ Неверные индексы карты:', cardIdxs);
             return;
         }
 
-        console.log('🃏 playCard вызван:', { cardIdx, playerIdx: this.playerIdx });
+        console.log('🃏 playCard вызван:', { cardIdx: isKozel ? cardIdxs : cardIdxs[0], action, playerIdx: this.playerIdx });
 
         // ✅ БЛОКИРУЕМ интерфейс СРАЗУ, до отправки
         this.isProcessing = true;
@@ -514,7 +553,8 @@ class OnlinePokerGame {
         this.socket.emit('playCard', {
             roomId: this.roomId,
             playerIdx: this.playerIdx,
-            cardIdx: cardIdx
+            cardIdx: isKozel ? cardIdxs : cardIdxs[0],
+            action: action
         });
     }
 
@@ -559,6 +599,11 @@ class OnlinePokerGame {
         const container = document.getElementById('modeCheckboxes');
         const help = document.getElementById('modeHelp');
         if (!container || !help || !this.gameState) return;
+        if (this.gameState.gameType === 'kozel') {
+            container.innerHTML = '<div style="opacity: 0.9;">🐐 Козел 1×1 (фиксированные правила)</div>';
+            help.textContent = 'В этом режиме нет выбора кампании.';
+            return;
+        }
 
         const isHost = this.playerIdx === 0;
         const availableModes = Array.isArray(this.gameState.availableModes) ? this.gameState.availableModes : [];
@@ -669,6 +714,8 @@ class OnlinePokerGame {
 
         const maxRounds = this.gameState.maxRounds || 11;
         infoBar.innerHTML = `
+        <span>${this.gameState.gameType === 'kozel' ? '🐐 Козел' : '🎰 Покер'}</span>
+        <span>|</span>
         <span>🎲 ${this.gameState.roundNumber}/${maxRounds}</span>
         <span>|</span>
         <span>🃏 ${this.gameState.cardsPerRound}</span>
@@ -772,6 +819,17 @@ class OnlinePokerGame {
         <span class="player-card-mini-suit">${suit}</span>
     `;
 
+        // 🐐 Козел: подсветка выделенных карт
+        const isKozelCard = this.gameState?.gameType === 'kozel';
+        const isSelected = isKozelCard && Array.isArray(this.kozelSelectedIdxs) && this.kozelSelectedIdxs.includes(card.id);
+        if (isSelected) {
+            cardDiv.style.outline = '2px solid #4ecca3';
+            cardDiv.style.outlineOffset = '2px';
+        } else {
+            cardDiv.style.outline = '';
+            cardDiv.style.outlineOffset = '';
+        }
+
         if (!isValid) {
             cardDiv.classList.add('disabled');
         }
@@ -790,12 +848,264 @@ class OnlinePokerGame {
                 console.log('⚠️ Клик заблокирован (isProcessing)');
                 return;
             }
+
+            // 🐐 КОЗЕЛ: много-картный ход через выделение
+            if (this.gameState?.gameType === 'kozel') {
+                const attackCount = this.gameState.cardsOnTable?.length || 0;
+                const isDefensePhase = attackCount > 0;
+                const idx = card.id;
+
+                const toggleIdx = (arr, val) => {
+                    const i = arr.indexOf(val);
+                    if (i !== -1) arr.splice(i, 1);
+                    else arr.push(val);
+                };
+
+                if (!isDefensePhase) {
+                    // Атака: не-джокеры должны быть одной масти
+                    const isJoker = card.isSixSpades;
+                    const selected = this.kozelSelectedIdxs.includes(idx);
+
+                    if (selected) {
+                        toggleIdx(this.kozelSelectedIdxs, idx);
+                    } else {
+                        if (!isJoker) {
+                            if (this.kozelSuitLock && card.suit !== this.kozelSuitLock) {
+                                return;
+                            }
+                            if (!this.kozelSuitLock) {
+                                this.kozelSuitLock = card.suit;
+                            }
+                        }
+                        this.kozelSelectedIdxs.push(idx);
+                    }
+
+                    // Пересчитываем suitLock по оставшимся не-джокерам
+                    const nonJokers = this.kozelSelectedIdxs
+                        .map((i) => this.myHand.find(c => c.id === i))
+                        .filter((c) => c && !c.isSixSpades);
+                    this.kozelSuitLock = nonJokers.length > 0 ? nonJokers[0].suit : null;
+                } else {
+                    // Защита: количество карт = количеству атакующих
+                    const requiredCount = attackCount;
+                    const selected = this.kozelSelectedIdxs.includes(idx);
+
+                    if (selected) {
+                        toggleIdx(this.kozelSelectedIdxs, idx);
+                    } else {
+                        if (this.kozelSelectedIdxs.length >= requiredCount) return;
+                        this.kozelSelectedIdxs.push(idx);
+                    }
+                }
+
+                // Обновляем UI (кнопки и подсветку выделения)
+                this.updatePlayersArea();
+                this.updateControlArea();
+                return;
+            }
+
+            // 🎯 ПОКЕР (старое поведение)
             this.playCard(card.id);
         };
         cardDiv.style.cursor = 'pointer';
         cardDiv.title = 'Нажмите чтобы походить';
 
         return cardDiv;
+    }
+
+    canKozelBeat(attackCard, defendCard) {
+        if (!attackCard || !defendCard) return false;
+        if (defendCard.isSixSpades) return true; // 6♠ - джокер
+
+        // Если атаковали пиками — отбиваем ТОЛЬКО пиками (по старшинству)
+        if (attackCard.suit === '♠') {
+            return defendCard.suit === '♠' &&
+                KOZEL_RANK_ORDER[defendCard.rank] > KOZEL_RANK_ORDER[attackCard.rank];
+        }
+
+        // Та же масть
+        if (defendCard.suit === attackCard.suit) {
+            return KOZEL_RANK_ORDER[defendCard.rank] > KOZEL_RANK_ORDER[attackCard.rank];
+        }
+
+        // Козырь (если козыря нет — this.gameState.trumpSuit будет null)
+        if (this.gameState?.trumpSuit && defendCard.suit === this.gameState.trumpSuit) {
+            if (attackCard.suit === this.gameState.trumpSuit) {
+                return KOZEL_RANK_ORDER[defendCard.rank] > KOZEL_RANK_ORDER[attackCard.rank];
+            }
+            return true; // любой козырь бьет не-козырную атаку
+        }
+
+        return false;
+    }
+
+    resetKozelSelection() {
+        this.kozelSelectedIdxs = [];
+        this.kozelSuitLock = null;
+        // key выставляется в updateControlArea (там же происходит сброс при смене фазы)
+        // Чтобы UI не показывал старое выделение до прихода gameState.
+        this.updatePlayersArea();
+        this.updateControlArea();
+    }
+
+    clientHasHammer() {
+        if (!this.myHand || this.myHand.length < 4) return false;
+        const jokerCount = this.myHand.filter(c => c.isSixSpades).length;
+        const nonJokers = this.myHand.filter(c => !c.isSixSpades);
+        for (const suit of ['♠', '♥', '♦', '♣']) {
+            if (nonJokers.filter(c => c.suit === suit).length + jokerCount >= 4) return true;
+        }
+        return false;
+    }
+
+    clientHasMoscow() {
+        if (!this.myHand || this.myHand.length < 4) return false;
+        const POINTS = { 'A': 11, '10': 10, 'K': 4, 'Q': 3, 'J': 2 };
+        return this.myHand.reduce((sum, c) => sum + (c.isSixSpades ? 11 : (POINTS[c.rank] || 0)), 0) >= 41;
+    }
+
+    isKozelComboBlocked() {
+        const attackCount = this.gameState.cardsOnTable?.length || 0;
+        const isMyTurn = this.getCurrentPlayerIdx() === this.playerIdx;
+        if (attackCount === 0 && !isMyTurn) {
+            const opponentIdx = (this.playerIdx + 1) % 2;
+            const combos = this.gameState.playerCombos;
+            if (combos && (combos[opponentIdx]?.hammer || combos[opponentIdx]?.moscow)) return true;
+        }
+        return false;
+    }
+
+    submitKozelCombo(comboType) {
+        if (this.isProcessing) return;
+        this.isProcessing = true;
+        this.playCardTimeout = setTimeout(() => {
+            this.isProcessing = false;
+        }, 5000);
+        this.socket.emit('playCombo', {
+            roomId: this.roomId,
+            playerIdx: this.playerIdx,
+            comboType,
+        });
+    }
+
+    submitKozelAttack() {
+        if (this.isProcessing) return;
+        if (!Array.isArray(this.kozelSelectedIdxs) || this.kozelSelectedIdxs.length === 0) return;
+
+        const cardIdxs = [...this.kozelSelectedIdxs];
+        this.resetKozelSelection();
+        this.playCard(cardIdxs, 'attack');
+    }
+
+    submitKozelDefense(action = 'discard') {
+        if (this.isProcessing) return;
+
+        const attackCount = this.gameState.cardsOnTable?.length || 0;
+        if (!Array.isArray(this.kozelSelectedIdxs) || this.kozelSelectedIdxs.length !== attackCount) return;
+
+        const cardIdxs = [...this.kozelSelectedIdxs];
+        this.resetKozelSelection();
+        this.playCard(cardIdxs, action);
+    }
+
+    canKozelBeatAllFromSelection() {
+        const attackEntries = this.gameState.cardsOnTable || [];
+        const attackSuit = this.gameState.kozelAttackSuit || '♠';
+
+        const attackCardsNorm = attackEntries.map(({ card }) => {
+            if (card.isSixSpades) {
+                return { suit: attackSuit, rank: 'A', isSixSpades: false };
+            }
+            return { suit: card.suit, rank: card.rank, isSixSpades: false };
+        });
+
+        const defenseCards = (this.kozelSelectedIdxs || [])
+            .map((i) => this.myHand.find(c => c.id === i))
+            .filter(Boolean);
+
+        if (attackCardsNorm.length === 0) return false;
+        if (defenseCards.length !== attackCardsNorm.length) return false;
+
+        const n = attackCardsNorm.length;
+        const used = Array(n).fill(false);
+
+        const dfs = (attackIdx) => {
+            if (attackIdx >= n) return true;
+            for (let defendIdx = 0; defendIdx < n; defendIdx++) {
+                if (used[defendIdx]) continue;
+                const defendCard = defenseCards[defendIdx];
+                if (this.canKozelBeat(attackCardsNorm[attackIdx], defendCard)) {
+                    used[defendIdx] = true;
+                    if (dfs(attackIdx + 1)) return true;
+                    used[defendIdx] = false;
+                }
+            }
+            return false;
+        };
+
+        return dfs(0);
+    }
+
+    showKozelDefenseChoiceModal({ attackCard, defendCard, canBeat, cardId }) {
+        // Защита только когда мы реально отвечаем (иначе кнопки будут бессмысленны)
+        const modalId = 'kozelDefenseChoiceModal';
+        const existing = document.getElementById(modalId);
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.className = 'joker-choice-modal'; // используем похожий стиль
+        modal.id = modalId;
+        modal.style.zIndex = '1000';
+
+        const attackText = attackCard ? `${attackCard.rank}${attackCard.suit}` : '-';
+        let defendText = '-';
+        if (defendCard) {
+            defendText = defendCard.isSixSpades ? '6♠🃏' : `${defendCard.rank}${defendCard.suit}`;
+        }
+
+        const buttonsHtml = canBeat
+            ? `
+                <button class="btn btn-primary" style="margin: 8px;" id="${modalId}-beat">Отбить</button>
+                <button class="btn btn-secondary" style="margin: 8px;" id="${modalId}-discard">Скинуть</button>
+              `
+            : `
+                <button class="btn btn-primary" style="margin: 8px;" id="${modalId}-discard">Скинуть</button>
+              `;
+
+        modal.innerHTML = `
+            <div class="joker-modal-content">
+                <div class="joker-title">🐐 Ответ на атаку</div>
+                <div class="joker-info">Атака: <strong>${attackText}</strong></div>
+                <div class="joker-info">Вы выбрали: <strong>${defendText}</strong></div>
+                <div class="joker-question" style="margin-top: 10px;">Что делаем?</div>
+                <div class="joker-options">${buttonsHtml}</div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        const beatBtn = document.getElementById(`${modalId}-beat`);
+        const discardBtn = document.getElementById(`${modalId}-discard`);
+
+        if (beatBtn) {
+            beatBtn.onclick = () => {
+                this.playCard(cardId, 'beat');
+                modal.remove();
+            };
+        }
+
+        if (discardBtn) {
+            discardBtn.onclick = () => {
+                this.playCard(cardId, 'discard');
+                modal.remove();
+            };
+        }
+
+        // Небольшая анимация как у джокера (если стили есть)
+        setTimeout(() => {
+            modal.style.opacity = '1';
+            modal.style.transform = 'translate(-50%, -50%) scale(1)';
+        }, 10);
     }
 
     updateCardsOnTable() {
@@ -869,6 +1179,9 @@ class OnlinePokerGame {
             console.log('❌ gameState is null');
             return null;
         }
+        if (this.gameState.gameType === 'kozel') {
+            return this.gameState.currentPlayer;
+        }
 
         // ✅ ФАЗА ТОРГОВЛИ
         if (this.gameState.gameState === 'bidding') {
@@ -895,6 +1208,9 @@ class OnlinePokerGame {
 
     getValidClientIndices() {
         if (!this.myHand || this.myHand.length === 0) return [];
+        if (this.gameState?.gameType === 'kozel') {
+            return this.myHand.map((_, i) => i);
+        }
 
         // ✅ Если есть условие джокера — находим ОДНУ конкретную карту
         if (this.gameState.jokerCondition &&
@@ -972,6 +1288,231 @@ class OnlinePokerGame {
     updateControlArea() {
         const area = document.getElementById('controlArea');
         area.innerHTML = '';
+        if (this.gameState.gameType === 'kozel') {
+            const currentPlayerIdx = this.getCurrentPlayerIdx();
+            const isMyTurn = currentPlayerIdx === this.playerIdx;
+            const isFinished = this.gameState.gameState === 'finished';
+            const attackCount = this.gameState.cardsOnTable?.length || 0;
+            const phase = attackCount === 0 ? 'attack' : 'defense';
+            const key = `${this.gameState.gameState}:${attackCount}:${phase}`;
+
+            // Сбрасываем выделение при смене фазы/хода
+            if (this._kozelSelectionKey !== key) {
+                this.kozelSelectedIdxs = [];
+                this.kozelSuitLock = null;
+                this._kozelSelectionKey = key;
+            }
+
+            if (isFinished) {
+                const msg = document.createElement('div');
+                msg.className = 'message success';
+                msg.textContent = '🏁 Партия в Козла завершена';
+                area.appendChild(msg);
+                return;
+            }
+
+            if (!isMyTurn) {
+                const msg = document.createElement('div');
+                msg.className = 'message';
+                msg.textContent = `⏳ ${this.gameState.players[currentPlayerIdx]?.name || 'Соперник'} ходит...`;
+                area.appendChild(msg);
+
+                // Показываем кнопки комбинаций, если они есть и не заблокированы приоритетом
+                if (!this.isKozelComboBlocked()) {
+                    const hasHammer = this.clientHasHammer();
+                    const hasMoscow = this.clientHasMoscow();
+                    if (hasHammer || hasMoscow) {
+                        const comboRow = document.createElement('div');
+                        comboRow.style.marginTop = '10px';
+                        if (hasHammer) {
+                            const btn = document.createElement('button');
+                            btn.className = 'btn btn-primary';
+                            btn.textContent = '🔨 Сходить молотку';
+                            btn.onclick = () => this.submitKozelCombo('hammer');
+                            comboRow.appendChild(btn);
+                        }
+                        if (hasMoscow) {
+                            const btn = document.createElement('button');
+                            btn.className = 'btn btn-primary';
+                            btn.style.marginLeft = hasHammer ? '8px' : '';
+                            btn.textContent = '🏙️ Сходить москву';
+                            btn.onclick = () => this.submitKozelCombo('moscow');
+                            comboRow.appendChild(btn);
+                        }
+                        area.appendChild(comboRow);
+                    }
+                }
+                return;
+            }
+
+            // ПОЛЬЗОВАТЕЛЬ СВОЙ ХОД
+            if (phase === 'attack') {
+                const selectedCount = this.kozelSelectedIdxs.length;
+                const suitText = this.kozelSuitLock ? ` (масть: ${this.kozelSuitLock})` : '';
+
+                area.innerHTML = `
+                    <div class="message success">
+                        🐐 Выберите ${selectedCount > 0 ? `ещё/карт: ${selectedCount}` : 'карту(ы)'} одной масти${suitText}
+                    </div>
+                `;
+
+                const controls = document.createElement('div');
+                controls.style.marginTop = '10px';
+
+                if (selectedCount > 0) {
+                    const btn = document.createElement('button');
+                    btn.className = 'btn btn-primary';
+                    btn.textContent = `🃏 Ходить ${selectedCount} карт(ой)`;
+                    btn.onclick = () => this.submitKozelAttack();
+                    controls.appendChild(btn);
+                } else {
+                    const btn = document.createElement('button');
+                    btn.className = 'btn btn-primary';
+                    btn.textContent = '🃏 Выберите карты для атаки';
+                    btn.classList.add('disabled');
+                    controls.appendChild(btn);
+                }
+
+                const btnClear = document.createElement('button');
+                btnClear.className = 'btn btn-secondary';
+                btnClear.style.marginLeft = '8px';
+                btnClear.textContent = 'Очистить выбор';
+                btnClear.onclick = () => this.resetKozelSelection();
+                controls.appendChild(btnClear);
+
+                // Кнопки комбинаций в свой ход (молотка/москва — играть вместо обычного хода)
+                const hasHammer = this.clientHasHammer();
+                const hasMoscow = this.clientHasMoscow();
+                if (hasHammer || hasMoscow) {
+                    const sep = document.createElement('span');
+                    sep.style.margin = '0 8px';
+                    sep.textContent = '|';
+                    controls.appendChild(sep);
+                    if (hasHammer) {
+                        const btn = document.createElement('button');
+                        btn.className = 'btn btn-primary';
+                        btn.textContent = '🔨 Молотка!';
+                        btn.onclick = () => this.submitKozelCombo('hammer');
+                        controls.appendChild(btn);
+                    }
+                    if (hasMoscow) {
+                        const btn = document.createElement('button');
+                        btn.className = 'btn btn-primary';
+                        btn.style.marginLeft = '8px';
+                        btn.textContent = '🏙️ Москва!';
+                        btn.onclick = () => this.submitKozelCombo('moscow');
+                        controls.appendChild(btn);
+                    }
+                }
+
+                area.appendChild(controls);
+                return;
+            }
+
+            // phase === 'defense'
+            const requiredCount = attackCount;
+            const selectedCount = this.kozelSelectedIdxs.length;
+
+            if (selectedCount < requiredCount) {
+                const msg = document.createElement('div');
+                msg.className = 'message warning';
+                msg.textContent = `🐐 Выберите ровно ${requiredCount} карт для отбития`;
+                area.appendChild(msg);
+
+                // Комбинации доступны и в фазе защиты (если ещё не выбрали карты)
+                const hasHammerE = this.clientHasHammer();
+                const hasMoscowE = this.clientHasMoscow();
+                if (hasHammerE || hasMoscowE) {
+                    const comboRow = document.createElement('div');
+                    comboRow.style.marginTop = '8px';
+                    if (hasHammerE) {
+                        const btn = document.createElement('button');
+                        btn.className = 'btn btn-primary';
+                        btn.textContent = '🔨 Молотка!';
+                        btn.onclick = () => this.submitKozelCombo('hammer');
+                        comboRow.appendChild(btn);
+                    }
+                    if (hasMoscowE) {
+                        const btn = document.createElement('button');
+                        btn.className = 'btn btn-primary';
+                        btn.style.marginLeft = hasHammerE ? '8px' : '';
+                        btn.textContent = '🏙️ Москва!';
+                        btn.onclick = () => this.submitKozelCombo('moscow');
+                        comboRow.appendChild(btn);
+                    }
+                    area.appendChild(comboRow);
+                }
+                return;
+            }
+
+            // selectedCount === requiredCount
+            const canBeatAll = this.canKozelBeatAllFromSelection();
+
+            area.innerHTML = `
+                <div class="message success">
+                    🐐 Выберите действие для отбития: ${selectedCount}/${requiredCount}
+                </div>
+            `;
+
+            const controls = document.createElement('div');
+            controls.style.marginTop = '10px';
+
+            if (canBeatAll) {
+                const btnBeat = document.createElement('button');
+                btnBeat.className = 'btn btn-primary';
+                btnBeat.textContent = '🛡️ Отбить';
+                btnBeat.onclick = () => this.submitKozelDefense('beat');
+                controls.appendChild(btnBeat);
+
+                const btnDiscard = document.createElement('button');
+                btnDiscard.className = 'btn btn-secondary';
+                btnDiscard.style.marginLeft = '8px';
+                btnDiscard.textContent = '⤵️ Скинуть';
+                btnDiscard.onclick = () => this.submitKozelDefense('discard');
+                controls.appendChild(btnDiscard);
+            } else {
+                const btnDiscard = document.createElement('button');
+                btnDiscard.className = 'btn btn-primary';
+                btnDiscard.textContent = '⤵️ Скинуть';
+                btnDiscard.onclick = () => this.submitKozelDefense('discard');
+                controls.appendChild(btnDiscard);
+            }
+
+            const btnClear = document.createElement('button');
+            btnClear.className = 'btn btn-secondary';
+            btnClear.style.marginLeft = '8px';
+            btnClear.textContent = 'Очистить выбор';
+            btnClear.onclick = () => this.resetKozelSelection();
+            controls.appendChild(btnClear);
+
+            // Кнопки комбинаций в фазе защиты (можно переходить вместо защиты)
+            const hasHammerD = this.clientHasHammer();
+            const hasMoscowD = this.clientHasMoscow();
+            if (hasHammerD || hasMoscowD) {
+                const sep = document.createElement('span');
+                sep.style.margin = '0 8px';
+                sep.textContent = '|';
+                controls.appendChild(sep);
+                if (hasHammerD) {
+                    const btn = document.createElement('button');
+                    btn.className = 'btn btn-primary';
+                    btn.textContent = '🔨 Молотка!';
+                    btn.onclick = () => this.submitKozelCombo('hammer');
+                    controls.appendChild(btn);
+                }
+                if (hasMoscowD) {
+                    const btn = document.createElement('button');
+                    btn.className = 'btn btn-primary';
+                    btn.style.marginLeft = '8px';
+                    btn.textContent = '🏙️ Москва!';
+                    btn.onclick = () => this.submitKozelCombo('moscow');
+                    controls.appendChild(btn);
+                }
+            }
+
+            area.appendChild(controls);
+            return;
+        }
 
         // ✅ Если ждём выбор джокера — показываем статус
         if (this.gameState.waitingForJokerChoice) {
@@ -1205,15 +1746,19 @@ class OnlinePokerGame {
     showResults() {
         this.showScreen('resultsScreen');
         const leaderboard = document.getElementById('leaderboard');
-        leaderboard.innerHTML = '<h2 style="color: #4ecca3; margin-bottom: 20px;">📊 Итоговые результаты:</h2>';
-        const sortedPlayers = [...this.gameState.players].sort((a, b) => b.score - a.score);
+        const isKozel = this.gameState?.gameType === 'kozel';
+        leaderboard.innerHTML = `<h2 style="color: #4ecca3; margin-bottom: 20px;">${isKozel ? '🐐 Итог по штрафам:' : '📊 Итоговые результаты:'}</h2>`;
+        const sortedPlayers = [...this.gameState.players].sort((a, b) => isKozel ? a.penalties - b.penalties : b.score - a.score);
         const medals = ['🥇', '🥈', '🥉'];
         sortedPlayers.forEach((player, idx) => {
             const div = document.createElement('div');
             div.className = 'leaderboard-item';
             if (idx === 0) div.classList.add('winner');
             const medal = medals[idx] || '  ';
-            div.innerHTML = `<span style="font-size: 1.3em;">${medal}</span> ${idx + 1}. ${player.name} — <strong style="color: #4ecca3;">${player.score}</strong> очков`;
+            const scoreText = isKozel
+                ? `${player.penalties ?? 0} штрафных`
+                : `${player.score} очков`;
+            div.innerHTML = `<span style="font-size: 1.3em;">${medal}</span> ${idx + 1}. ${player.name} — <strong style="color: #4ecca3;">${scoreText}</strong>`;
             leaderboard.appendChild(div);
         });
     }
@@ -1365,8 +1910,10 @@ class OnlinePokerGame {
     updateRoomsList(rooms) {
         const container = document.getElementById('roomsList');
         if (!container) return;
+        const selectedType = this.getSelectedGameType();
+        const filteredRooms = (rooms || []).filter((room) => (room.gameType || 'poker') === selectedType);
 
-        if (!rooms || rooms.length === 0) {
+        if (!filteredRooms || filteredRooms.length === 0) {
             container.innerHTML = `
             <div class="rooms-empty">
                 📭 Нет доступных комнат<br>
@@ -1376,11 +1923,12 @@ class OnlinePokerGame {
             return;
         }
 
-        container.innerHTML = rooms.map(room => `
+        container.innerHTML = filteredRooms.map(room => `
         <div class="room-item ${!room.hasSpace ? 'room-full' : ''}">
             <div class="room-info">
                 <div class="room-id">${room.roomId}</div>
                 <div class="room-details">
+                    <span>${room.gameType === 'kozel' ? '🐐 Козел' : '🎰 Покер'}</span>
                     <span class="room-players">
                         <span class="room-players-icon">👥</span>
                         ${room.playerCount}/${room.maxPlayers}
@@ -1409,7 +1957,8 @@ class OnlinePokerGame {
         }
 
         console.log('🚪 Быстрый вход в комнату:', roomId);
-        this.socket.emit('joinRoom', { roomId, playerName });
+        this.gameType = this.getSelectedGameType();
+        this.socket.emit('joinRoom', { roomId, playerName, gameType: this.gameType });
     }
 }
 
