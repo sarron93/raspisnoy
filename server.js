@@ -3,6 +3,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
+const KozelGameEngine = require('./games/kozel/KozelGame');
 
 const app = express();
 const server = http.createServer(app);
@@ -38,6 +39,7 @@ function getAvailableRooms() {
             const maxPlayers = room.maxPlayers;
             const hasSpace = playerCount < maxPlayers;
             const testMode = room.testMode;
+            const gameType = room.gameType || 'poker';
 
             // ✅ Скрываем имя создателя для приватности
             const creatorName = room.players[0]?.name || 'Unknown';
@@ -48,6 +50,7 @@ function getAvailableRooms() {
                 maxPlayers,
                 hasSpace,
                 testMode,
+                gameType,
                 creatorName: creatorName.charAt(0).toUpperCase() + '***', // Скрываем часть имени
                 createdAt: Date.now()
             });
@@ -93,6 +96,18 @@ const GameMode = {
 const MODE_KEYS = Object.keys(GameMode);
 
 const TOTAL_CARDS = 36;
+const KOZEL_CARD_POINTS = { 'A': 11, '10': 10, 'K': 4, 'Q': 3, 'J': 2, '9': 0, '8': 0, '7': 0, '6': 0 };
+// Старшинство для перебивания в "Козле": 6 < 7 < 8 < 9 < В(=J) < Д(=Q) < К < 10 < Т(=A)
+const KOZEL_RANK_ORDER = { '6': 0, '7': 1, '8': 2, '9': 3, 'J': 4, 'Q': 5, 'K': 6, '10': 7, 'A': 8 };
+const KOZEL_PENALTY_TARGET = 12;
+
+function getKozelPenalty(points, handLength) {
+    if (points === 0 && handLength === 0) return 6;
+    if (points === 0 && handLength > 0) return 4;
+    if (points < 31) return 4;
+    if (points < 60) return 2;
+    return 0;
+}
 
 class Card {
     constructor(suit, rank, isSixSpades = false) {
@@ -165,6 +180,7 @@ class Deck {
 class OnlineGame {
     constructor(roomId, maxPlayers) {
         this.roomId = roomId;
+        this.gameType = 'poker';
         this.maxPlayers = maxPlayers;
         this.players = [];
         this.gameState = 'waiting';
@@ -996,6 +1012,7 @@ class OnlineGame {
     getGameState() {
         return {
             roomId: this.roomId,
+            gameType: this.gameType || 'poker',
             gameState: this.gameState,
             selectedModeKeys: this.selectedModeKeys,
             availableModes: this.getAvailableModes(),
@@ -1060,12 +1077,260 @@ class OnlineGame {
     }
 }
 
+class KozelGame {
+    constructor(roomId) {
+        this.roomId = roomId;
+        this.gameType = 'kozel';
+        this.maxPlayers = 2;
+        this.players = [];
+        this.gameState = 'waiting';
+        this.dealerIdx = 0;
+        this.firstPlayerIdx = 0;
+        this.currentPlayerIdx = 0;
+        this.deck = null;
+        this.trumpSuit = null;
+        this.trumpCard = null;
+        this.tableAttack = [];
+        this.tableDefense = [];
+        this.captured = [[], []];
+        this.roundPoints = [0, 0];
+        this.penalties = [0, 0];
+        this.eggsMultiplier = 1;
+    }
+
+    addPlayer(socketId, name) {
+        if (this.players.length >= 2) return { success: false, error: 'В Козле только 2 игрока' };
+        this.players.push({
+            socketId, name, hand: [], score: 0, bid: 0, tricks: 0, hasBid: true, isConnected: true
+        });
+        return { success: true, playerIdx: this.players.length - 1 };
+    }
+
+    startGame() {
+        if (this.players.length !== 2) return { success: false, error: 'Для Козла нужно ровно 2 игрока' };
+        this.penalties = [0, 0];
+        this.eggsMultiplier = 1;
+        this.dealerIdx = 0;
+        this.firstPlayerIdx = 0;
+        this.gameState = 'playing';
+        this.startRound();
+        return { success: true };
+    }
+
+    startRound() {
+        this.deck = new Deck();
+        this.tableAttack = [];
+        this.tableDefense = [];
+        this.captured = [[], []];
+        this.roundPoints = [0, 0];
+        this.players.forEach((p) => {
+            p.hand = [];
+            p.tricks = 0;
+        });
+        // В "Козле" козырь берём из колоды, но не вынимаем его: чтобы 6♠ (джокер) точно участвовала в раздаче.
+        const trumpIndex = Math.floor(Math.random() * this.deck.cards.length);
+        this.trumpCard = this.deck.cards[trumpIndex] || null;
+        this.trumpSuit = this.trumpCard ? this.trumpCard.suit : null;
+        // Если козырем становится пика — играется бескозырка (козырей нет).
+        if (this.trumpSuit === '♠') this.trumpSuit = null;
+        for (let i = 0; i < 4; i++) {
+            for (let p = 0; p < 2; p++) {
+                const card = this.deck.deal();
+                if (card) this.players[p].hand.push(card);
+            }
+        }
+        this.currentPlayerIdx = this.firstPlayerIdx;
+    }
+
+    getValidCards(player) {
+        return player.hand.map((_, i) => i);
+    }
+
+    canBeat(attackCard, defendCard) {
+        // 6♠ (джокер) бьёт всё.
+        if (defendCard.isSixSpades) return true;
+
+        // Если зашли пиками — перебить можно ТОЛЬКО пиками.
+        if (attackCard.suit === '♠') {
+            return defendCard.suit === '♠' &&
+                KOZEL_RANK_ORDER[defendCard.rank] > KOZEL_RANK_ORDER[attackCard.rank];
+        }
+
+        // Перебивание картой той же масти старшего достоинства.
+        if (defendCard.suit === attackCard.suit) {
+            return KOZEL_RANK_ORDER[defendCard.rank] > KOZEL_RANK_ORDER[attackCard.rank];
+        }
+
+        // Перебивание козырем.
+        if (this.trumpSuit && defendCard.suit === this.trumpSuit) {
+            // Если атаковали козырем — нужно старше (по старшинству козырей).
+            if (attackCard.suit === this.trumpSuit) {
+                return KOZEL_RANK_ORDER[defendCard.rank] > KOZEL_RANK_ORDER[attackCard.rank];
+            }
+            // Если атаковали не козырем — любой козырь бьёт.
+            return true;
+        }
+
+        return false;
+    }
+
+    playCard(playerIdx, cardIdx, action = null) {
+        if (this.gameState !== 'playing') return { success: false, error: 'Игра не активна' };
+        if (playerIdx !== this.currentPlayerIdx) return { success: false, error: 'Сейчас не ваш ход!' };
+        const player = this.players[playerIdx];
+        if (!player || cardIdx < 0 || cardIdx >= player.hand.length) return { success: false, error: 'Неверная карта' };
+
+        const card = player.hand.splice(cardIdx, 1)[0];
+        if (this.tableAttack.length === 0) {
+            this.tableAttack.push({ playerIdx, card });
+            this.currentPlayerIdx = (playerIdx + 1) % 2;
+            return { success: true, gameState: this.getGameState() };
+        }
+
+        const attackEntry = this.tableAttack[this.tableDefense.length];
+        if (!attackEntry) {
+            player.hand.splice(cardIdx, 0, card);
+            return { success: false, error: 'Некорректный ход защиты' };
+        }
+
+        const canBeat = this.canBeat(attackEntry.card, card);
+        const actionNorm = action || (canBeat ? 'beat' : 'discard');
+
+        let beatSuccessful = false;
+        if (actionNorm === 'beat') {
+            if (!canBeat) {
+                // Возвращаем карту обратно — игрок пытался отбиться, но выбранная карта не бьёт.
+                player.hand.push(card);
+                return { success: false, error: 'Этой картой нельзя отбиться' };
+            }
+            beatSuccessful = true;
+        } else if (actionNorm === 'discard') {
+            beatSuccessful = false;
+        } else {
+            player.hand.push(card);
+            return { success: false, error: 'Некорректное действие' };
+        }
+
+        this.tableDefense.push({ playerIdx, card });
+        if (this.tableDefense.length === this.tableAttack.length) {
+            const attackerIdx = attackEntry.playerIdx;
+            const winnerIdx = beatSuccessful ? playerIdx : attackerIdx;
+            const pile = [...this.tableAttack, ...this.tableDefense].map((x) => x.card);
+            this.captured[winnerIdx].push(...pile);
+            this.players[winnerIdx].tricks += 1;
+            this.finishTrick(winnerIdx);
+            return { success: true, gameState: this.getGameState(), trickEnded: true };
+        }
+        return { success: true, gameState: this.getGameState() };
+    }
+
+    finishTrick(winnerIdx) {
+        this.tableAttack = [];
+        this.tableDefense = [];
+        [winnerIdx, (winnerIdx + 1) % 2].forEach((idx) => {
+            const card = this.deck.deal();
+            if (card) this.players[idx].hand.push(card);
+        });
+        this.currentPlayerIdx = winnerIdx;
+        this.firstPlayerIdx = winnerIdx;
+        if (this.players.every((p) => p.hand.length === 0) && this.deck.cards.length === 0) {
+            this.endRound();
+        }
+    }
+
+    endRound() {
+        this.roundPoints = this.captured.map((cards) => cards.reduce((sum, c) => sum + (KOZEL_CARD_POINTS[c.rank] || 0), 0));
+        const sum = this.roundPoints[0] + this.roundPoints[1];
+        if (sum < 120) {
+            const lost = 120 - sum;
+            const loserIdx = this.roundPoints[0] >= this.roundPoints[1] ? 1 : 0;
+            this.roundPoints[loserIdx] += lost;
+        }
+
+        const p0HandLen = this.players[0]?.hand?.length || 0;
+        const p1HandLen = this.players[1]?.hand?.length || 0;
+        const p0Penalty = getKozelPenalty(this.roundPoints[0], p0HandLen) * this.eggsMultiplier;
+        const p1Penalty = getKozelPenalty(this.roundPoints[1], p1HandLen) * this.eggsMultiplier;
+        this.penalties[0] += p0Penalty;
+        this.penalties[1] += p1Penalty;
+        if (this.players[0]) this.players[0].score = -this.penalties[0];
+        if (this.players[1]) this.players[1].score = -this.penalties[1];
+
+        if (this.roundPoints[0] === 60 && this.roundPoints[1] === 60) {
+            this.eggsMultiplier = 2;
+        } else {
+            this.eggsMultiplier = 1;
+        }
+
+        if (this.penalties[0] >= KOZEL_PENALTY_TARGET || this.penalties[1] >= KOZEL_PENALTY_TARGET) {
+            this.gameState = 'finished';
+            return;
+        }
+
+        const loserIdx = this.roundPoints[0] >= this.roundPoints[1] ? 1 : 0;
+        this.dealerIdx = loserIdx;
+        this.firstPlayerIdx = this.currentPlayerIdx;
+        this.startRound();
+    }
+
+    getGameState() {
+        const p0Tricks = this.players[0]?.tricks || 0;
+        const p1Tricks = this.players[1]?.tricks || 0;
+        return {
+            roomId: this.roomId,
+            gameType: 'kozel',
+            gameState: this.gameState,
+            selectedModeKeys: [],
+            availableModes: [],
+            players: this.players.map((p, idx) => ({
+                name: p.name,
+                score: p.score,
+                bid: null,
+                tricks: p.tricks,
+                hasBid: true,
+                handLength: p.hand.length,
+                isDealer: idx === this.dealerIdx,
+                penalties: this.penalties[idx]
+            })),
+            currentPlayer: this.currentPlayerIdx,
+            trickLeader: this.currentPlayerIdx,
+            cardsPerRound: 4,
+            trumpSuit: this.trumpSuit,
+            mode: '🐐 Козел 1×1',
+            roundNumber: 1,
+            maxRounds: 1,
+            modeIdx: 1,
+            totalModes: 1,
+            cardsOnTable: [...this.tableAttack, ...this.tableDefense].map(({ playerIdx, card }) => ({ playerIdx, card: card.toJSON() })),
+            leadSuit: this.tableAttack[0]?.card?.suit || null,
+            currentTrick: p0Tricks + p1Tricks,
+            testMode: false,
+            jokerCondition: null,
+            jokerPlayerIdx: null,
+            kozel: {
+                penalties: this.penalties,
+                roundPoints: this.roundPoints,
+                eggsMultiplier: this.eggsMultiplier,
+                deckCount: this.deck?.cards?.length || 0
+            }
+        };
+    }
+
+    getGameStateWithHand(playerIdx) {
+        const state = this.getGameState();
+        state.hand = this.players[playerIdx]?.hand?.map((c) => c.toJSON()) || [];
+        return state;
+    }
+}
+
 io.on('connection', (socket) => {
     console.log('🔌 Игрок подключился:', socket.id);
 
-    socket.on('createRoom', ({ playerName, maxPlayers = 4, testMode = false }) => {
+    socket.on('createRoom', ({ playerName, maxPlayers = 4, testMode = false, gameType = 'poker' }) => {
         const roomId = uuidv4().substr(0, 6).toUpperCase();
-        const room = new OnlineGame(roomId, maxPlayers);
+        const normalizedType = gameType === 'kozel' ? 'kozel' : 'poker';
+        const room = normalizedType === 'kozel' ? new KozelGameEngine(roomId) : new OnlineGame(roomId, maxPlayers);
+        room.gameType = normalizedType;
 
         // ✅ Включаем тест-режим если запрошено
         room.testMode = testMode;
@@ -1095,10 +1360,15 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('joinRoom', ({ roomId, playerName }) => {
+    socket.on('joinRoom', ({ roomId, playerName, gameType = 'poker' }) => {
         const room = rooms[roomId];
         if (!room) {
             socket.emit('error', 'Комната не найдена');
+            return;
+        }
+        const normalizedType = gameType === 'kozel' ? 'kozel' : 'poker';
+        if ((room.gameType || 'poker') !== normalizedType) {
+            socket.emit('error', 'Эта комната создана для другой игры');
             return;
         }
 
@@ -1128,6 +1398,9 @@ io.on('connection', (socket) => {
         const room = rooms[roomId];
         if (!room) {
             socket.emit('error', 'Комната не найдена');
+            return;
+        }
+        if ((room.gameType || 'poker') !== 'poker') {
             return;
         }
 
@@ -1160,6 +1433,7 @@ io.on('connection', (socket) => {
     socket.on('makeBid', ({ roomId, playerIdx, bid }) => {
         const room = rooms[roomId];
         if (!room) return;
+        if ((room.gameType || 'poker') !== 'poker') return;
 
         const result = room.makeBid(playerIdx, bid);
         if (result.success) {
@@ -1170,16 +1444,27 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('playCard', ({ roomId, playerIdx, cardIdx }) => {
+    socket.on('playCard', ({ roomId, playerIdx, cardIdx, action }) => {
         const room = rooms[roomId];
         if (!room) return;
 
         console.log(`🃏 Игрок ${playerIdx} пытается сыграть карту ${cardIdx}`);
-        const result = room.playCard(playerIdx, cardIdx);
+        const result = room.playCard(playerIdx, cardIdx, action);
 
         if (result && result.success) {
             io.to(roomId).emit('cardPlayed', result.gameState);
             console.log(`✅ Карта сыграна успешно`);
+
+            // В "Козле" клиенту обязательно нужно обновить руку.
+            // Поскольку сервер отправляет только `cardPlayed` (без `hand`) — шлём `gameState` с руками отдельно.
+            if ((room.gameType || 'poker') === 'kozel') {
+                room.players.forEach((p, idx) => {
+                    if (p?.socketId) {
+                        const stateWithHand = room.getGameStateWithHand(idx);
+                        io.to(p.socketId).emit('gameState', stateWithHand);
+                    }
+                });
+            }
 
             if (result.finished) {
                 io.to(roomId).emit('gameFinished', result.gameState);
@@ -1194,6 +1479,41 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('kozelContinue', ({ roomId, playerIdx }) => {
+        const room = rooms[roomId];
+        if (!room || (room.gameType || 'poker') !== 'kozel') return;
+
+        const result = room.confirmRoundEnd();
+        if (result && result.success) {
+            room.players.forEach((p, idx) => {
+                if (p?.socketId) {
+                    io.to(p.socketId).emit('gameState', room.getGameStateWithHand(idx));
+                }
+            });
+        }
+    });
+
+    socket.on('playCombo', ({ roomId, playerIdx, comboType }) => {
+        const room = rooms[roomId];
+        if (!room) return;
+        if ((room.gameType || 'poker') !== 'kozel') return;
+
+        console.log(`🐐 Игрок ${playerIdx} играет комбинацию: ${comboType}`);
+        const result = room.playCombo(playerIdx, comboType);
+
+        if (result && result.success) {
+            room.players.forEach((p, idx) => {
+                if (p?.socketId) {
+                    io.to(p.socketId).emit('gameState', room.getGameStateWithHand(idx));
+                }
+            });
+            console.log(`✅ Комбинация ${comboType} сыграна`);
+        } else if (result && result.error) {
+            console.log(`❌ Ошибка комбинации: ${result.error}`);
+            socket.emit('error', result.error);
+        }
+    });
+
     socket.on('getGameState', ({ roomId, playerIdx }) => {
         const room = rooms[roomId];
         if (!room) return;
@@ -1205,6 +1525,7 @@ io.on('connection', (socket) => {
     socket.on('jokerChoice', ({ roomId, playerIdx, choice, suit, cardType }) => {
         const room = rooms[roomId];
         if (!room || !room.pendingJoker) return;
+        if ((room.gameType || 'poker') !== 'poker') return;
 
         // ✅ Проверка что выбирает тот же игрок
         if (room.pendingJoker.playerIdx !== playerIdx) {
@@ -1405,9 +1726,13 @@ io.on('connection', (socket) => {
     });
 });
 
+module.exports = { OnlineGame, KozelGame };
+
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`🎰 Сервер запущен на порту ${PORT}`);
-    console.log(`🌐 Откройте http://localhost:${PORT} в браузере`);
-});
+if (require.main === module) {
+    server.listen(PORT, () => {
+        console.log(`🎰 Сервер запущен на порту ${PORT}`);
+        console.log(`🌐 Откройте http://localhost:${PORT} в браузере`);
+    });
+}
 
