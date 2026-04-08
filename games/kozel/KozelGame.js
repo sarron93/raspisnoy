@@ -445,6 +445,7 @@ class KozelGame {
         const loserIdx = this.roundSummary.roundPoints[0] >= this.roundSummary.roundPoints[1] ? 1 : 0;
         this.dealerIdx = loserIdx;
         this.roundSummary = null;
+        this.gameState = 'playing';
         this.startRound();
         return { success: true, gameState: this.getGameState() };
     }
