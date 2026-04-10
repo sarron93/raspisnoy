@@ -387,6 +387,8 @@ class OnlineGame {
         this.cardsPlayedThisTrick = [];
         this.trickLeaderIdx = (this.dealerIdx + 1) % this.players.length;
         this.trickCompleted = false;  // ✅ Сброс флага в начале раунда
+        this.jokerCondition = null;
+        this.jokerPlayerIdx = null;
 
         this.deck = new Deck();
 
